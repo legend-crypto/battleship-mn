@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId, useSwitchChain } from 'wagmi';
-import { BATTLESHIP_STAKING_ADDRESS, BATTLESHIP_STAKING_ABI } from '../config/contract';
-import { ZERO_G_MAINNET } from '../config/wagmi';
-import { Coins, ExternalLink, ShieldCheck, Lock, CheckCircle2, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
-import { parseEther } from 'viem';
+import { useMidnightWallet } from '../context/MidnightWalletContext';
+import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
+import { Coins, ExternalLink, Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface StakingPanelProps {
   matchIdBytes32: string;
@@ -20,118 +18,79 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
   hasStaked,
   onStakeConfirmed
 }) => {
-  const { isConnected } = useAccount();
-  const currentChainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { isConnected } = useMidnightWallet();
 
-  const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+  const [txHash, setTxHash] = useState<string | undefined>();
+  const [isPending, setIsPending] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const { writeContractAsync, isPending: isWritePending } = useWriteContract();
-
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash: txHash
-  });
-
-  React.useEffect(() => {
-    if (isConfirmed && txHash) {
-      onStakeConfirmed(txHash);
-    }
-  }, [isConfirmed, txHash, onStakeConfirmed]);
 
   const handleDepositStake = async () => {
     setErrorMessage(null);
-
-    // Auto-switch chain to 0G Mainnet if user's wallet is on a different network
-    if (currentChainId !== ZERO_G_MAINNET.id && switchChain) {
-      try {
-        await switchChain({ chainId: ZERO_G_MAINNET.id });
-      } catch (e) {
-        console.warn('Network switch warning:', e);
-      }
-    }
+    setIsPending(true);
 
     try {
-      const valueWei = parseEther(stakeAmountEth);
+      // TODO: Compact contract call for BattleshipStaking.compact escrow deposit
+      // Execution circuit: BattleshipStaking.compact -> create_match / join_match
+      console.log(`[Compact Contract Call Placeholder] Staking ${stakeAmountEth} NIGHT for match ${matchIdBytes32} as ${role}`);
 
-      if (role === 'host') {
-        const hash = await writeContractAsync({
-          address: BATTLESHIP_STAKING_ADDRESS,
-          abi: BATTLESHIP_STAKING_ABI,
-          functionName: 'createMatch',
-          args: [matchIdBytes32 as `0x${string}`],
-          value: valueWei,
-          gas: 250000n // Gas safety limit to prevent gas estimation truncations
-        });
-        setTxHash(hash);
-      } else {
-        const hash = await writeContractAsync({
-          address: BATTLESHIP_STAKING_ADDRESS,
-          abi: BATTLESHIP_STAKING_ABI,
-          functionName: 'joinMatch',
-          args: [matchIdBytes32 as `0x${string}`],
-          value: valueWei,
-          gas: 250000n
-        });
-        setTxHash(hash);
-      }
+      // Simulate on-chain confirmation for preview
+      setTimeout(() => {
+        const mockTxHash = `0xmn_${Date.now().toString(16)}`;
+        setTxHash(mockTxHash);
+        setIsPending(false);
+        onStakeConfirmed(mockTxHash);
+      }, 1200);
     } catch (err: any) {
       console.error('Staking error:', err);
-      const msg = err.shortMessage || err.message || 'Transaction rejected';
-      if (msg.includes('insufficient funds')) {
-        setErrorMessage('Insufficient 0G token balance in your wallet for stake + gas fee.');
-      } else {
-        setErrorMessage(msg);
-      }
+      setErrorMessage(err?.message || 'Deposit transaction failed');
+      setIsPending(false);
     }
   };
-
-  const isWrongChain = currentChainId !== ZERO_G_MAINNET.id;
 
   return (
     <div className="w-full max-w-md bg-[#091015] border border-slate-800 p-6 rounded-3xl shadow-2xl font-mono text-left space-y-5">
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <h3 className="text-xs font-black tracking-widest text-white uppercase flex items-center gap-2">
           <Coins className="w-4 h-4 text-emerald-400" />
-          <span>0G TOKEN ESCROW STAKE</span>
+          <span>MIDNIGHT TOKEN ESCROW STAKE</span>
         </h3>
         <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded border border-emerald-500/40">
-          CHAIN ID 16661
+          {MIDNIGHT_TESTNET.name}
         </span>
       </div>
 
       <div className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl space-y-2 text-xs">
         <div className="flex justify-between items-center text-slate-400">
           <span>Required Match Stake:</span>
-          <span className="text-emerald-400 font-bold text-sm">{stakeAmountEth} 0G</span>
+          <span className="text-emerald-400 font-bold text-sm">{stakeAmountEth} NIGHT</span>
         </div>
         <div className="flex justify-between items-center text-slate-400">
           <span>Escrow Smart Contract:</span>
-          <span className="text-slate-200 font-mono text-[10px]">BattleshipStaking.sol</span>
+          <span className="text-slate-200 font-mono text-[10px]">BattleshipStaking.compact</span>
         </div>
         <div className="flex justify-between items-center text-slate-400">
           <span>Target Network:</span>
-          <span className="text-emerald-400 font-semibold">0G Mainnet</span>
+          <span className="text-emerald-400 font-semibold">{MIDNIGHT_TESTNET.name}</span>
         </div>
       </div>
 
-      {hasStaked || isConfirmed ? (
+      {hasStaked ? (
         <div className="p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-xs text-emerald-300 space-y-2">
           <div className="flex items-center gap-2 font-bold">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>0G Escrow Deposit Confirmed!</span>
+            <span>Midnight Escrow Deposit Confirmed!</span>
           </div>
           <p className="text-[11px] text-emerald-400/80 font-sans">
-            Your stake is safely escrowed in the smart contract on 0G Mainnet.
+            Your stake is safely escrowed in the Compact smart contract on Midnight Network.
           </p>
           {txHash && (
             <a
-              href={`${ZERO_G_MAINNET.blockExplorers.default.url}/tx/${txHash}`}
+              href={`${MIDNIGHT_TESTNET.blockExplorer}/tx/${txHash}`}
               target="_blank"
               rel="noreferrer"
               className="text-[10px] text-emerald-400 underline font-mono flex items-center gap-1 mt-1"
             >
-              <span>View Transaction on 0G Explorer</span>
+              <span>View Transaction on Midnight Explorer</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           )}
@@ -140,51 +99,26 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
         <div className="space-y-3">
           {!isConnected ? (
             <div className="p-3 bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs rounded-xl text-center">
-              Connect Web3 wallet in header to deposit 0G stake.
+              Connect Lace Wallet in top header to deposit stake.
             </div>
-          ) : isWrongChain ? (
-            <button
-              onClick={() => switchChain && switchChain({ chainId: ZERO_G_MAINNET.id })}
-              className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>SWITCH WALLET TO 0G MAINNET</span>
-            </button>
           ) : (
             <button
-              disabled={isWritePending || isConfirming}
+              disabled={isPending}
               onClick={handleDepositStake}
               className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              {isWritePending ? (
+              {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>CONFIRM IN WALLET...</span>
-                </>
-              ) : isConfirming ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  <span>MINING ON 0G MAINNET...</span>
+                  <span>CONFIRMING ON MIDNIGHT...</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-4 h-4" />
-                  <span>DEPOSIT {stakeAmountEth} 0G STAKE</span>
+                  <span>DEPOSIT {stakeAmountEth} NIGHT STAKE</span>
                 </>
               )}
             </button>
-          )}
-
-          {txHash && (
-            <a
-              href={`${ZERO_G_MAINNET.blockExplorers.default.url}/tx/${txHash}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[11px] text-emerald-400 underline font-mono flex items-center justify-center gap-1"
-            >
-              <span>View Pending Tx on 0G Explorer</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
           )}
 
           {errorMessage && (

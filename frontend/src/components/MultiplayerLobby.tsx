@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { SocketEvent, MatchSummary } from '@battleship/shared';
 import { socketService } from '../services/socket';
 import { WalletConnect } from './WalletConnect';
-import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+import { useMidnightWallet } from '../context/MidnightWalletContext';
 import { Swords, Plus, LogIn, Users, Copy, Check, ArrowLeft, RefreshCw, Coins, Lock, ShieldCheck, Play, Sparkles } from 'lucide-react';
-import { ZERO_G_MAINNET } from '../config/wagmi';
-import { keccak256, encodePacked } from 'viem';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { ConvexErrorBoundary } from './ConvexErrorBoundary';
@@ -62,7 +60,7 @@ const RealtimeConvexLobbies: React.FC<{
             <div>
               <span className="font-bold text-white block">{lobby.hostName}</span>
               <span className="text-[10px] text-slate-400 font-mono">
-                Stake: <strong className="text-emerald-400">{lobby.stakeAmountEth} 0G</strong> • #{lobby.matchCode}
+                Stake: <strong className="text-emerald-400">{lobby.stakeAmountEth} NIGHT</strong> • #{lobby.matchCode}
               </span>
             </div>
 
@@ -80,11 +78,9 @@ const RealtimeConvexLobbies: React.FC<{
 };
 
 export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu, onMatchReady }) => {
-  const { address, isConnected } = useAccount();
-  const currentChainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { address, isConnected } = useMidnightWallet();
 
-  const [playerName, setPlayerName] = useState(() => localStorage.getItem('0g_player_name') || 'Captain Alpha');
+  const [playerName, setPlayerName] = useState(() => localStorage.getItem('mn_player_name') || 'Captain Alpha');
   const [stakeAmountEth, setStakeAmountEth] = useState('0.1');
   const [joinCode, setJoinCode] = useState('');
   const [localLobbies, setLocalLobbies] = useState<MatchSummary[]>([]);
@@ -103,13 +99,13 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
   const socket = socketService.getSocket();
 
   useEffect(() => {
-    localStorage.setItem('0g_player_name', playerName);
+    localStorage.setItem('mn_player_name', playerName);
   }, [playerName]);
 
   // Load existing saved local lobbies
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('0g_open_lobbies');
+      const saved = localStorage.getItem('mn_open_lobbies');
       if (saved) {
         setLocalLobbies(JSON.parse(saved));
       }
@@ -160,16 +156,8 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
     }
 
     if (!isConnected || !address) {
-      setErrorMsg('Please connect your Web3 wallet in the header to create a Staked Match on 0G Mainnet.');
+      setErrorMsg('Please connect your Lace wallet in the header to create a Staked Match on Midnight Network.');
       return;
-    }
-
-    if (currentChainId !== ZERO_G_MAINNET.id && switchChain) {
-      try {
-        switchChain({ chainId: ZERO_G_MAINNET.id });
-      } catch (e) {
-        console.warn('Network switch warning:', e);
-      }
     }
 
     setErrorMsg('');
@@ -177,7 +165,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
     // Generate unique match IDs and 6-character match code
     const rawMatchId = `match_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const matchIdBytes32 = keccak256(encodePacked(['string', 'address', 'uint256'], ['0G_MATCH', address as `0x${string}`, BigInt(Date.now())]));
+    const matchIdBytes32 = `0xmn_${Date.now().toString(16)}_${Math.random().toString(36).substring(2, 10)}`;
     const token = `token_host_${Date.now()}`;
     const pId = `pid_host_${Date.now()}`;
 
@@ -195,7 +183,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
 
     setLocalLobbies((prev) => {
       const updated = [newLobby, ...prev];
-      localStorage.setItem('0g_open_lobbies', JSON.stringify(updated));
+      localStorage.setItem('mn_open_lobbies', JSON.stringify(updated));
       return updated;
     });
 
@@ -300,7 +288,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
             </div>
             <div>
               <h3 className="text-sm font-black text-white uppercase">HOST NEW STAKED MATCH</h3>
-              <p className="text-[11px] text-slate-400 font-sans">Deposit 0G stake into 0G Mainnet Escrow</p>
+              <p className="text-[11px] text-slate-400 font-sans">Deposit stake into Midnight Compact Escrow</p>
             </div>
           </div>
 
@@ -320,7 +308,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
 
             <div>
               <label className="block text-slate-400 mb-1.5 font-bold uppercase text-[10px] flex justify-between">
-                <span>Match Stake (Max 0.1 0G)</span>
+                <span>Match Stake (Max 0.10 NIGHT)</span>
                 <Coins className="w-3.5 h-3.5 text-emerald-400" />
               </label>
               <select
@@ -328,9 +316,9 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
                 onChange={(e) => setStakeAmountEth(e.target.value)}
                 className="w-full px-4 py-3 bg-[#050B0E] border border-slate-800 rounded-xl text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500"
               >
-                <option value="0.01">0.01 0G Tokens (Prize Pool: 0.02 0G)</option>
-                <option value="0.05">0.05 0G Tokens (Prize Pool: 0.10 0G)</option>
-                <option value="0.1">0.10 0G Tokens (Max Stake: 0.20 0G)</option>
+                <option value="0.01">0.01 NIGHT Tokens (Prize Pool: 0.02 NIGHT)</option>
+                <option value="0.05">0.05 NIGHT Tokens (Prize Pool: 0.10 NIGHT)</option>
+                <option value="0.1">0.10 NIGHT Tokens (Max Stake: 0.20 NIGHT)</option>
               </select>
             </div>
 
@@ -339,7 +327,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-2 cursor-pointer mt-2"
             >
               <Lock className="w-4 h-4" />
-              <span>CREATE & DEPOSIT {stakeAmountEth} 0G STAKE</span>
+              <span>CREATE & DEPOSIT {stakeAmountEth} STAKE</span>
             </button>
           </div>
         </div>
@@ -404,7 +392,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
                         <div>
                           <span className="font-bold text-white block">{lobby.hostName}</span>
                           <span className="text-[10px] text-slate-400 font-mono">
-                            Stake: <strong className="text-emerald-400">{lobby.stakeAmountEth} 0G</strong> • #{lobby.matchCode}
+                            Stake: <strong className="text-emerald-400">{lobby.stakeAmountEth} NIGHT</strong> • #{lobby.matchCode}
                           </span>
                         </div>
 

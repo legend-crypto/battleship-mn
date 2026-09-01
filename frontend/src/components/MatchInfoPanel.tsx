@@ -106,13 +106,13 @@ export const MatchInfoPanel: React.FC<MatchInfoPanelProps> = ({
             </span>
             <span className="flex items-center gap-1 text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/50 font-bold">
               <Lock className="w-3 h-3" />
-              ESCROWED ON 0G
+              ESCROWED ON MIDNIGHT
             </span>
           </div>
 
           <div className="flex items-baseline justify-between mt-1">
-            <span className="text-xl font-black text-emerald-400">{totalStakeEth} 0G</span>
-            <span className="text-[11px] text-slate-400 font-bold">{stakeAmountEth} 0G • {stakeAmountEth} 0G</span>
+            <span className="text-xl font-black text-emerald-400">{totalStakeEth} NIGHT</span>
+            <span className="text-[11px] text-slate-400 font-bold">{stakeAmountEth} NIGHT • {stakeAmountEth} NIGHT</span>
           </div>
         </div>
 

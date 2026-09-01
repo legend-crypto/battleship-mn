@@ -51,7 +51,7 @@ export const createLobby = mutation({
         {
           id: `${Date.now()}-1`,
           sender: 'PLAYER',
-          message: `Lobby created by ${args.hostAddress.slice(0, 6)}...${args.hostAddress.slice(-4)}. Stake: ${args.stakeAmountEth} 0G`,
+          message: `Lobby created by ${args.hostAddress.slice(0, 6)}...${args.hostAddress.slice(-4)}. Stake: ${args.stakeAmountEth} NIGHT`,
           timestamp: new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' }),
           type: 'info'
         }

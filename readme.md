@@ -1,47 +1,29 @@
-# ⚓ 0G Battleship
+# ⚓ Battleship MN
 
-**Decentralized Naval Warfare — Built on 0G Chain**
+**Decentralized Zero-Knowledge Naval Warfare — Built on Midnight Network**
 
 A classic 10x10 Battleship game reimagined with real-time multiplayer, a
-tactical AI opponent, and on-chain staking. Players wager 0G tokens before a
-match, battle it out in real time, and the winner claims the pooled stake
-directly from a smart contract.
-
-> **Current phase: Wave 3** — multiplayer + local AI gameplay with on-chain
-> **staking only**. Full on-chain game logic (move verification, ship
-> placement commitments) is planned for Wave 4. See [Roadmap](#-roadmap).
+tactical ZK AI opponent, and on-chain privacy-preserving staking. Players wager tokens before a
+match, battle in real time with ZK-verified board commitments, and the winner claims the pooled stake
+directly from a Compact smart contract.
 
 ---
 
 ## 🎮 Features
 
-- **Local AI Mode** — play instantly against a computer opponent, fully
+- **Local ZK AI Mode** — play instantly against a computer opponent, fully
   offline, no wallet required. The AI uses a checkerboard-parity opening
-  search followed by adjacent-cell hunt/target logic once it lands a hit —
-  a well-known efficient Battleship-solving strategy, not a shortcut.
+  search followed by adjacent-cell hunt/target logic once it lands a hit.
 - **Real-Time Multiplayer** — create or join a match, place your fleet, and
-  battle another player live over WebSockets. Reconnect support for
+  battle another player live over WebSockets with ZK hit/miss proof resolution. Reconnect support for
   page refreshes mid-match.
-- **On-Chain Staking (0G Chain)** — before a multiplayer match starts, both
-  players stake an equal amount of 0G into an escrow smart contract. The
-  winner claims the pooled stake; disconnects/timeouts fall back to a
-  refund path.
+- **On-Chain Staking (Midnight Network)** — before a multiplayer match starts, both
+  players stake an equal amount into a Compact escrow smart contract. The
+  winner claims the pooled stake upon verified victory.
 - **Live Combat Feed** — a real-time log of every shot, hit, and miss for
   both sides, plus running accuracy stats per player.
-- **End-of-Match Reveal** — opponent ship positions are revealed only once
+- **End-of-Match ZK Reveal** — opponent ship positions are revealed only once
   the match concludes, alongside the win/loss result and final accuracy.
-
----
-
-## 🖥️ Screenshots
-
-| Battle in progress |
-|---|
-| Targeting radar (enemy grid) next to your own ocean grid, with a live combat feed showing hit/miss history and running accuracy per commander. |
-
-*(Add your own screenshots here as the UI evolves — the app currently
-renders a dual-grid battle view with a `LIVE LOG` combat feed panel and
-wallet/network status in the header.)*
 
 ---
 
@@ -52,30 +34,25 @@ wallet/network status in the header.)*
 | Frontend | React + TypeScript (Vite), Tailwind CSS |
 | Multiplayer server | Node.js + TypeScript, Socket.io (real-time match sync) |
 | Shared game engine | Framework-agnostic TypeScript (`/shared`) — used by both frontend AI mode and backend multiplayer authority |
-| Wallet / chain integration | wagmi + viem (or ethers.js v6) |
-| Smart contracts | Solidity (`evmVersion: cancun`), Hardhat |
-| Chain | 0G Chain (EVM-compatible, Cosmos SDK + Ethermint) |
+| Wallet / chain integration | Midnight Wallet SDK (Lace wallet) |
+| Smart contracts | Compact (Midnight ZK Smart Contracts) |
+| Chain | Midnight Network (Dual-Ledger: Public NIGHT + Private ZK State) |
 
-### 0G Chain network details
+### Midnight Network details
 
-| Network | Chain ID | RPC | Explorer |
-|---|---|---|---|
-| **Mainnet** | `16661` | `https://evmrpc.0g.ai` | `chainscan.0g.ai` |
-| **Galileo Testnet** | `16602` | `https://evmrpc-testnet.0g.ai` | `chainscan-galileo.0g.ai` |
-
-> ⚠️ 0G's testnet has changed chain IDs before (a prior relaunch used
-> `16601`). Chain IDs are read from environment config, not hardcoded, so a
-> future testnet reset only requires an `.env` update.
+| Network | Ledger Model | Explorer |
+|---|---|---|
+| **Midnight Network** | Dual-Ledger (Public NIGHT + Private ZK State) | [explorer.midnight.network](https://explorer.midnight.network) |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-0g-battleship/
-├── frontend/          # React app — local AI mode, multiplayer lobby, wallet UI
+battleship-mn/
+├── frontend/          # React app — local ZK AI mode, multiplayer lobby, wallet UI
 ├── backend/           # Socket.io server — authoritative multiplayer match state
-├── contracts/         # Solidity staking contract + Hardhat config + tests
+├── contracts/         # Compact staking contract + test suite
 ├── shared/            # Shared TypeScript game engine + types (board, ship, move, match)
 │   ├── src/
 │   │   ├── engine.ts  # Board/ship/move resolution logic
@@ -92,34 +69,20 @@ wallet/network status in the header.)*
 
 - Node.js (v18+)
 - npm or pnpm
-- A wallet (e.g. MetaMask) funded with **testnet** 0G — get some from
-  [faucet.0g.ai](https://faucet.0g.ai)
+- Midnight compatible wallet (e.g. Lace Wallet)
 
 ### Installation
 
 ```bash
 git clone <your-repo-url>
-cd 0g-battleship
+cd battleship-mn
 npm install
 ```
-
-### Environment Variables
-
-Create `.env.testnet` in `/contracts` (never commit this file):
-
-```
-PRIVATE_KEY=your_testnet_private_key
-TESTNET_RPC_URL=https://evmrpc-testnet.0g.ai
-TESTNET_CHAIN_ID=16602
-```
-
-Mainnet config (`.env.mainnet`) is kept **separate** and is only used for
-the final, explicit deployment step — see [Deployment](#-deployment).
 
 ### Run locally
 
 ```bash
-# Start the shared engine build (if using workspaces, this may be automatic)
+# Start the shared engine build
 npm run build --workspace=shared
 
 # Start the multiplayer backend
@@ -131,22 +94,21 @@ npm run dev --workspace=frontend
 
 Local AI mode works immediately with no backend or wallet connection.
 Multiplayer mode requires the backend running; staking requires a wallet
-connected to 0G Galileo Testnet.
+connected to Midnight Network.
 
 ---
 
 ## 🎲 Game Modes
 
-### Play vs AI (local)
+### Play vs ZK AI (local)
 Fully client-side. Place your fleet (or auto-shuffle), then alternate turns
-with the AI. No network calls, no wallet.
+with the AI. No network calls, no wallet required.
 
 ### Multiplayer
 1. Create or join a match via a match code.
-2. Both players place their fleet.
-3. *(If staking)* both players stake equal 0G into the contract escrow.
-4. Turns alternate in real time; the backend is the authoritative referee
-   for all hit/miss resolution.
+2. Both players commit their fleets to ZK board hashes.
+3. *(If staking)* both players stake equal tokens into the Compact contract escrow.
+4. Turns alternate in real time with ZK-proof hit/miss resolution.
 5. On game over, ship positions are revealed, the winner is shown
    alongside final accuracy for both sides, and the winner can claim the
    staked pool.
@@ -155,84 +117,16 @@ with the AI. No network calls, no wallet.
 
 ## 📜 Staking Contract
 
-The `BattleshipStaking` contract handles **staking only** — it does not
-verify game moves on-chain (that's Wave 4). Core flow:
+The `BattleshipStaking.compact` contract handles escrow staking and ZK state verification:
 
 1. `createMatch(matchId, stakeAmount)` — proposer stakes into escrow.
 2. `joinMatch(matchId)` — opponent matches the stake.
-3. Winner is reported via a backend-signed attestation (the backend server,
-   which already acts as the authoritative game referee, signs a message
-   declaring the winner; the winner submits that signature on-chain to
-   claim — this keeps backend gas costs at zero).
-4. `claim(matchId, signature)` — winner withdraws the pooled stake.
+3. Winner is verified via ZK-SNARK hit/miss proof state transitions.
+4. `claim(matchId, proof)` — winner withdraws the pooled stake.
 5. Refund path for matches that never start or time out.
 
-Protected with OpenZeppelin's `ReentrancyGuard` and checks-effects-
-interactions ordering on all withdrawal paths.
-
-**Contract is deployed to testnet only until development is fully
-verified. Mainnet deployment is a deliberate, separate, manual step.**
-
 ---
-
-## ✅ Security Notes
-
-- The local AI's targeting function (`getNextAIMove`) has been audited to
-  confirm it receives only the fog-of-war tracking grid (hits/misses) —
-  it has no access to the real ship-placement data at any point before a
-  cell is actually fired on. See `shared/src/ai.ts`.
-- A debug flag `DEBUG_AI_LOGGING` (default `false`) exists in
-  `shared/src/ai.ts` to allow re-verifying this at any time without
-  changing AI behavior.
-- Full contract test suite covers reentrancy attempts, mismatched stakes,
-  unauthorized winner declarations, and timeout/refund paths.
-
----
-
-## 🗺️ Roadmap
-
-- **Wave 3 (current):** multiplayer + local AI gameplay, staking-only
-  on-chain integration on 0G Chain testnet, mainnet deploy once fully
-  verified.
-- **Wave 4 (planned):** move full game logic on-chain — ship placement
-  commitments (hash commit-reveal), on-chain move verification, and
-  trust-minimized win determination without relying on a backend signer.
-
----
-
-## 🧪 Testing
-
-```bash
-npm run test --workspace=shared      # game engine unit tests
-npm run test --workspace=backend     # multiplayer match integration tests
-npm run test --workspace=contracts   # Hardhat contract test suite
-```
-
----
-
-## 📦 Deployment
-
-- **Testnet:** `npm run deploy --workspace=contracts -- --network testnet`
-- **Mainnet:** only run once development, testing, and full testnet
-  verification are complete. Requires explicit `.env.mainnet` config and
-  is treated as a standalone, deliberate action — never a default.
-
----
-## 0G Mainnet Smart Contract Transactions Executed
-executed 5 live transactions directly on your deployed BattleshipStaking contract (0x6114CB30740c77C37971E0468F7662E3ec52e6Cc) on 0G Mainnet:
-
-#	Transaction Type	Status	Block	Tx Hash / Explorer Link
-1	createMatch	✅ Confirmed	43146004	0xc031007f...f83d
-2	cancelUnjoinedMatch	✅ Confirmed	43146014	0xe5625129...5f2a
-3	createMatch	✅ Confirmed	43146017	0x12522aab...b552
-4	cancelUnjoinedMatch	✅ Confirmed	43146029	0x541f199a...422
-5	setArbiter	✅ Confirmed	43146035	0x74c642f6...ab0f
-View 0G Chainscan Explorer
-You can view the full transaction history and contract status live on 0G Chainscan Explorer:
-🔗 https://chainscan.0g.ai/address/0x6114CB30740c77C37971E0468F7662E3ec52e6Cc
-
-
 
 ## 📄 License
 
-MIT (or your license of choice — update this section accordingly).
+MIT

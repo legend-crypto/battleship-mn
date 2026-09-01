@@ -135,17 +135,17 @@ export const App: React.FC = () => {
 
             <h3 className="text-lg font-black text-white flex items-center gap-2 mb-1">
               <Swords className="w-5 h-5 text-emerald-400" />
-              <span>ACTIVE 0G MATCHES</span>
+              <span>ACTIVE MN MATCHES</span>
             </h3>
             <p className="text-xs text-slate-400 mb-4 font-sans">
-              Live on-chain escrow matches on 0G Mainnet
+              Live on-chain escrow matches on Midnight Network
             </p>
 
             <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
               <div className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
                 <div>
                   <span className="font-bold text-emerald-400 block">MATCH #BAT824</span>
-                  <span className="text-[10px] text-slate-500">STAKE: 0.10 0G</span>
+                  <span className="text-[10px] text-slate-500">STAKE: 0.10 NIGHT</span>
                 </div>
                 <span className="px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold">
                   IN PROGRESS
@@ -155,7 +155,7 @@ export const App: React.FC = () => {
               <div className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
                 <div>
                   <span className="font-bold text-slate-300 block">MATCH #NAV192</span>
-                  <span className="text-[10px] text-slate-500">STAKE: 0.05 0G</span>
+                  <span className="text-[10px] text-slate-500">STAKE: 0.05 NIGHT</span>
                 </div>
                 <span className="px-2.5 py-1 rounded bg-slate-900 text-slate-400 border border-slate-700 text-[10px] font-bold">
                   WAITING GUEST
@@ -192,7 +192,7 @@ export const App: React.FC = () => {
               <span>COMMANDER LEADERBOARD</span>
             </h3>
             <p className="text-xs text-slate-400 mb-4 font-sans">
-              Top strategic admirals on 0G Mainnet
+              Top strategic admirals on Midnight Network
             </p>
 
             <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
@@ -204,10 +204,10 @@ export const App: React.FC = () => {
                     <span className="text-[10px] text-slate-500">14 Wins • 82% Accuracy</span>
                   </div>
                 </div>
-                <span className="font-bold text-emerald-400">+1.45 0G</span>
+                <span className="font-bold text-emerald-400">+1.45 NIGHT</span>
               </div>
 
-              <div className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+              <div className="p-[#050B0E] p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
                 <div className="flex items-center space-x-3">
                   <span className="font-black text-slate-400 text-sm">#2</span>
                   <div>
@@ -215,7 +215,7 @@ export const App: React.FC = () => {
                     <span className="text-[10px] text-slate-500">11 Wins • 76% Accuracy</span>
                   </div>
                 </div>
-                <span className="font-bold text-emerald-400">+0.90 0G</span>
+                <span className="font-bold text-emerald-400">+0.90 NIGHT</span>
               </div>
             </div>
 
@@ -242,10 +242,10 @@ export const App: React.FC = () => {
 
             <h3 className="text-lg font-black text-white flex items-center gap-2 mb-1">
               <ShieldCheck className="w-5 h-5 text-emerald-400" />
-              <span>ABOUT 0G BATTLESHIP</span>
+              <span>ABOUT BATTLESHIP MN</span>
             </h3>
             <p className="text-xs text-slate-400 mb-4 font-sans leading-relaxed">
-              Decentralized naval warfare built on 0G Mainnet (`16661`). Wager 0G tokens, battle in real-time, and claim pooled stake escrow payouts with ECDSA signatures.
+              Decentralized zero-knowledge naval warfare built on Midnight Network. Wager tokens, battle in real-time with ZK-verified board commitments, and claim pooled stake escrow payouts.
             </p>
 
             <div className="p-4 bg-[#050B0E] border border-slate-800 rounded-xl space-y-2 text-xs text-slate-300 font-sans">
@@ -254,8 +254,8 @@ export const App: React.FC = () => {
                 <span className="font-mono text-emerald-400 text-[10px] break-all">{BATTLESHIP_STAKING_ADDRESS}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-mono text-slate-500">Chain ID:</span>
-                <span className="font-mono text-slate-200">16661 (0G Mainnet)</span>
+                <span className="font-mono text-slate-500">Network:</span>
+                <span className="font-mono text-slate-200">Midnight Network</span>
               </div>
             </div>
 

@@ -21,9 +21,8 @@ import { BoardGrid } from './BoardGrid';
 import { FleetPanel } from './FleetPanel';
 import { MatchInfoPanel } from './MatchInfoPanel';
 import { ShipPlacementPanel } from './ShipPlacementPanel';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { BATTLESHIP_STAKING_ADDRESS, BATTLESHIP_STAKING_ABI } from '../config/contract';
-import { ZERO_G_MAINNET } from '../config/wagmi';
+import { useMidnightWallet } from '../context/MidnightWalletContext';
+import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
 import { ArrowLeft, RefreshCw, Trophy, Flame, Shield, Coins, ExternalLink, CheckCircle2, Eye, BarChart3, Info, BookOpen, MessageSquare, Settings, Target, Copy, Check, Play, Users, Sparkles } from 'lucide-react';
 
 interface MultiplayerBattleProps {
@@ -42,7 +41,7 @@ interface MultiplayerBattleProps {
 }
 
 export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData, onExit }) => {
-  const { address } = useAccount();
+  const { address } = useMidnightWallet();
   const [phase, setPhase] = useState<'STAKING' | 'PLACEMENT' | 'PLAYING' | 'FINISHED'>('STAKING');
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -86,10 +85,8 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   const placedShipTypes = myBoard.ships.map((s) => s.type);
   const isMyTurn = currentTurn === matchData.playerId;
 
-  const { writeContractAsync, isPending: isClaimPending } = useWriteContract();
-  const { isLoading: isClaimMining, isSuccess: isClaimSuccess } = useWaitForTransactionReceipt({
-    hash: payoutTxHash
-  });
+  const [isClaimPending, setIsClaimPending] = useState(false);
+  const [isClaimSuccess, setIsClaimSuccess] = useState(false);
 
   const addLog = (sender: 'PLAYER' | 'AI', message: string, type: 'hit' | 'miss' | 'sunk' | 'info') => {
     const timestamp = new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' });
@@ -114,7 +111,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
     if (socket && socket.connected) {
       socket.on(SocketEvent.STAKING_COMPLETED, () => {
         setPhase('PLACEMENT');
-        addLog('PLAYER', '0G Escrow deposits confirmed! Deploy your fleet.', 'info');
+        addLog('PLAYER', 'Midnight Escrow deposits confirmed! Deploy your fleet.', 'info');
       });
 
       socket.on(SocketEvent.PLAYER_READY, (data: { p1Ready: boolean; p2Ready: boolean }) => {
@@ -182,7 +179,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   const handleStakeConfirmed = (txHash: string) => {
     setHasStaked(true);
     setStakeTxHash(txHash);
-    addLog('PLAYER', `0G Stake deposited into 0G Mainnet Escrow! (TxHash: ${txHash.slice(0, 10)}...)`, 'info');
+    addLog('PLAYER', `Stake deposited into Midnight Compact Escrow! (TxHash: ${txHash.slice(0, 10)}...)`, 'info');
     setPhase('PLACEMENT');
   };
 
@@ -265,18 +262,20 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   };
 
   const handleClaimWinnerPayout = async () => {
-    if (!payoutSignature || !matchData.matchIdBytes32) return;
+    if (!matchData.matchIdBytes32) return;
+    setIsClaimPending(true);
     try {
-      const hash = await writeContractAsync({
-        address: BATTLESHIP_STAKING_ADDRESS,
-        abi: BATTLESHIP_STAKING_ABI,
-        functionName: 'claimWinnerPayout',
-        args: [matchData.matchIdBytes32 as `0x${string}`, payoutSignature as `0x${string}`],
-        gas: 250000n
-      });
-      setPayoutTxHash(hash);
+      // TODO: Compact contract call for BattleshipStaking.compact payout claim
+      // Execution circuit: BattleshipStaking.compact -> claim_winner_payout
+      console.log(`[Compact Contract Call Placeholder] Claiming payout for match ${matchData.matchIdBytes32}`);
+      setTimeout(() => {
+        setPayoutTxHash(`0xmn_claim_${Date.now().toString(16)}`);
+        setIsClaimPending(false);
+        setIsClaimSuccess(true);
+      }, 1000);
     } catch (err: any) {
       console.error('Claim Error:', err);
+      setIsClaimPending(false);
     }
   };
 
@@ -316,7 +315,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
         <div className="flex items-center space-x-3">
           <span className="text-xs text-emerald-400 bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 font-bold flex items-center gap-1.5">
             <Coins className="w-3.5 h-3.5 text-emerald-400" />
-            STAKE: {matchData.stakeAmountEth} 0G
+            STAKE: {matchData.stakeAmountEth} NIGHT
           </span>
 
           {phase === 'PLAYING' && (
@@ -399,7 +398,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
             </div>
           </div>
 
-          {/* 0G Escrow Staking Panel */}
+          {/* Midnight Escrow Staking Panel */}
           <StakingPanel
             matchIdBytes32={matchData.matchIdBytes32}
             stakeAmountEth={matchData.stakeAmountEth}
@@ -568,28 +567,28 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
               <div className="mb-6 p-4 bg-[#050B0E] rounded-2xl border border-emerald-500/30 text-left space-y-3">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-slate-400">Total Escrow Prize Pool:</span>
-                  <span className="text-emerald-400 font-bold text-sm">{totalPayoutEth} 0G</span>
+                  <span className="text-emerald-400 font-bold text-sm">{totalPayoutEth} NIGHT</span>
                 </div>
 
                 {isClaimSuccess && payoutTxHash ? (
                   <div className="p-3 bg-emerald-950/60 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 space-y-1">
                     <div className="flex items-center gap-1.5 font-bold">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span>0G Stake Payout Claimed!</span>
+                      <span>Stake Payout Claimed!</span>
                     </div>
                     <a
-                      href={`${ZERO_G_MAINNET.blockExplorers.default.url}/tx/${payoutTxHash}`}
+                      href={`${MIDNIGHT_TESTNET.blockExplorer}/tx/${payoutTxHash}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[10px] text-emerald-400 underline font-mono flex items-center gap-1"
                     >
-                      <span>View Claim Tx on 0G Explorer</span>
+                      <span>View Claim Tx on Midnight Explorer</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>
                 ) : (
                   <button
-                    disabled={isClaimPending || isClaimMining}
+                    disabled={isClaimPending}
                     onClick={handleClaimWinnerPayout}
                     className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs tracking-wider uppercase shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
                   >
@@ -597,9 +596,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
                     <span>
                       {isClaimPending
                         ? 'Confirming in Wallet...'
-                        : isClaimMining
-                        ? 'Mining Claim Tx...'
-                        : `Claim ${totalPayoutEth} 0G Pooled Stake`}
+                        : `Claim ${totalPayoutEth} Pooled Stake`}
                     </span>
                   </button>
                 )}

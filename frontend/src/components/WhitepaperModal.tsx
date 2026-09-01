@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, ExternalLink, ShieldCheck, Cpu, Lock, Coins, FileText, CheckCircle2, Target, ArrowLeft } from 'lucide-react';
-import { ZERO_G_MAINNET } from '../config/wagmi';
+import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
 
 interface WhitepaperModalProps {
   onClose: () => void;
@@ -13,15 +13,15 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
         {/* Header Bar */}
         <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-[#050B0E] rounded-t-3xl">
           <div className="flex items-center space-x-3">
-            <img src="/logo.png" alt="0G Logo" className="w-9 h-9 object-contain rounded-xl shadow-md" />
+            <img src="/logo.png" alt="Battleship MN Logo" className="w-9 h-9 object-contain rounded-xl shadow-md" />
             <div>
               <h2 className="text-base font-black text-white tracking-wider flex items-center gap-2">
-                <span>0G BATTLESHIP</span>
+                <span>BATTLESHIP MN</span>
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/40">
                   TECHNICAL WHITEPAPER V1.0
                 </span>
               </h2>
-              <p className="text-[10px] text-slate-400">Decentralized On-Chain Escrow & Real-Time Strategy Engine</p>
+              <p className="text-[10px] text-slate-400">Decentralized Zero-Knowledge Private-State Strategy Engine</p>
             </div>
           </div>
 
@@ -42,7 +42,7 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
               <span>EXECUTIVE SUMMARY</span>
             </h3>
             <p>
-              <strong>0G Battleship</strong> is a high-performance, Web3-native tactical naval strategy game powered by <strong>0G Chain</strong> (Zero-Gravity). It combines a framework-agnostic 10x10 grid Battleship engine, an authoritative Socket.io referee server, an audited Hunt-and-Target AI, and smart contract escrow staking (<code className="text-emerald-400">BattleshipStaking.sol</code>).
+              <strong>Battleship MN</strong> is a Web3-native tactical naval strategy game powered by <strong>Midnight Network</strong>. It combines a framework-agnostic 10x10 grid Battleship engine, Compact smart contracts for private-state commitments, zero-knowledge hit/miss resolution proofs, and on-chain escrow staking (<code className="text-emerald-400">BattleshipStaking.compact</code>).
             </p>
             <div className="grid sm:grid-cols-2 gap-3 pt-2 font-mono text-[11px]">
               <div className="p-3 bg-[#091015] rounded-xl border border-slate-800/80">
@@ -51,7 +51,7 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
               </div>
               <div className="p-3 bg-[#091015] rounded-xl border border-slate-800/80">
                 <strong className="text-emerald-400 block mb-0.5">STAKED AI & MULTIPLAYER</strong>
-                Escrow staking on 0G Mainnet with 2x pooled token rewards claimed via off-chain ECDSA attestation.
+                Escrow staking on Midnight Network with 2x pooled token rewards claimed via ZK-verified Compact contract state transitions.
               </div>
             </div>
           </section>
@@ -60,7 +60,7 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
           <section className="space-y-4">
             <h3 className="font-mono text-sm font-black text-white uppercase flex items-center gap-2 pb-2 border-b border-slate-800">
               <Cpu className="w-4 h-4 text-emerald-400" />
-              <span>1. SYSTEM ARCHITECTURE</span>
+              <span>1. MIDNIGHT DUAL-LEDGER ARCHITECTURE</span>
             </h3>
 
             <div className="grid md:grid-cols-2 gap-4 font-mono text-[11px]">
@@ -72,23 +72,23 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
               </div>
 
               <div className="p-4 bg-[#050B0E] rounded-xl border border-slate-800 space-y-2">
-                <span className="text-emerald-400 font-bold block">1.2 AUTHORITATIVE REFEREE (/backend)</span>
+                <span className="text-emerald-400 font-bold block">1.2 PRIVATE ZK STATE COMMITMENTS</span>
                 <p className="text-slate-400 font-sans text-xs">
-                  Node.js + Socket.io referee server. Maintains server-side fog-of-war state, prevents client move tampering, and acts as the cryptographic Arbiter.
+                  Hidden ship placements are committed to Midnight's private ZK state via Compact contracts. Player coordinates remain private until hit or revealed.
                 </p>
               </div>
 
               <div className="p-4 bg-[#050B0E] rounded-xl border border-slate-800 space-y-2">
-                <span className="text-emerald-400 font-bold block">1.3 SMART CONTRACT ESCROW (/contracts)</span>
+                <span className="text-emerald-400 font-bold block">1.3 COMPACT ESCROW CONTRACT (/contracts)</span>
                 <p className="text-slate-400 font-sans text-xs">
-                  Solidity ^0.8.24 contract with OpenZeppelin ReentrancyGuard, compiled for 0G EVM target <code className="text-emerald-400">cancun</code>. Holds 0G token stakes securely until verified settlement.
+                  Written in Midnight's Compact language. Holds token stakes on the public NIGHT ledger while evaluating private ZK proofs for payout distribution.
                 </p>
               </div>
 
               <div className="p-4 bg-[#050B0E] rounded-xl border border-slate-800 space-y-2">
                 <span className="text-emerald-400 font-bold block">1.4 WEB3 FRONTEND (/frontend)</span>
                 <p className="text-slate-400 font-sans text-xs">
-                  Vite + React + Tailwind + Wagmi/Viem integration supporting MetaMask and injected Web3 browser wallets.
+                  Vite + React + Tailwind + Midnight Wallet integration supporting Lace and injected Web3 browser wallets.
                 </p>
               </div>
             </div>
@@ -110,50 +110,50 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
             </ul>
           </section>
 
-          {/* 3. Smart Contract & Attestation */}
+          {/* 3. Smart Contract & ZK Resolution */}
           <section className="space-y-4">
             <h3 className="font-mono text-sm font-black text-white uppercase flex items-center gap-2 pb-2 border-b border-slate-800">
               <Lock className="w-4 h-4 text-emerald-400" />
-              <span>3. SMART CONTRACT & CRYPTOGRAPHIC ATTESTATION</span>
+              <span>3. SMART CONTRACT & ZERO-KNOWLEDGE RESOLUTION</span>
             </h3>
 
             <div className="bg-[#050B0E] p-4 rounded-xl border border-slate-800 space-y-2 font-mono text-[11px]">
-              <span className="text-emerald-400 font-bold block">EIP-191 ECDSA Attestation Signature Scheme:</span>
+              <span className="text-emerald-400 font-bold block">Compact ZK Circuit Commitment Scheme:</span>
               <div className="p-3 bg-[#091015] rounded-lg border border-slate-800 text-slate-300 font-mono text-[10px] overflow-x-auto">
-                Hash = keccak256(abi.encodePacked("WINNER_PAYOUT", matchIdBytes32, winnerAddress, totalPayoutWei))
+                verify_hit_proof(boardCommitment, targetPos, resultHash) -&gt; zkpResult
               </div>
               <p className="font-sans text-xs text-slate-400">
-                Off-chain game moves occur over WebSockets with zero per-turn gas fees. Upon game conclusion, the backend Arbiter signs the payout hash, enabling the winner to invoke <code className="text-emerald-400">claimWinnerPayout</code> on-chain.
+                Off-chain game moves occur with zero per-turn gas fees while generating ZK-SNARK proofs verifying hit/miss accuracy against private board commitments.
               </p>
             </div>
           </section>
 
-          {/* 4. 0G Mainnet Contract Info */}
+          {/* 4. Midnight Network Contract Info */}
           <section className="space-y-3 bg-[#050B0E] p-5 rounded-2xl border border-emerald-500/30">
             <h3 className="font-mono text-sm font-black text-emerald-400 uppercase flex items-center gap-2">
               <ShieldCheck className="w-4 h-4" />
-              <span>4. 0G MAINNET DEPLOYMENT DETAILS</span>
+              <span>4. MIDNIGHT NETWORK DEPLOYMENT DETAILS</span>
             </h3>
 
             <div className="grid sm:grid-cols-2 gap-3 font-mono text-[11px]">
               <div>
-                <span className="text-slate-500 block">Smart Contract Address:</span>
-                <span className="text-white font-bold text-xs break-all">0x6114CB30740c77C37971E0468F7662E3ec52e6Cc</span>
+                <span className="text-slate-500 block">Escrow Smart Contract:</span>
+                <span className="text-white font-bold text-xs break-all">BattleshipStaking.compact</span>
               </div>
               <div>
-                <span className="text-slate-500 block">Network / Chain ID:</span>
-                <span className="text-emerald-400 font-bold">0G Mainnet (Chain ID 16661)</span>
+                <span className="text-slate-500 block">Target Network:</span>
+                <span className="text-emerald-400 font-bold">Midnight Network</span>
               </div>
             </div>
 
             <div className="pt-2">
               <a
-                href={`${ZERO_G_MAINNET.blockExplorers.default.url}/address/0x6114CB30740c77C37971E0468F7662E3ec52e6Cc`}
+                href="https://explorer.midnight.network"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 underline hover:text-emerald-300"
               >
-                <span>View Verified Contract on 0G Chainscan Explorer</span>
+                <span>View Verified Contract on Midnight Explorer</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -166,14 +166,14 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
               <span>5. TOKENOMICS & STAKING LIMITS</span>
             </h3>
             <p>
-              Match stakes are configured between <strong>0.01 0G</strong> and <strong>0.10 0G</strong> per match during the initial test-run phase. Winners claim 2x pooled stakes on-chain. Prize pool caps will scale following our ecosystem funding round.
+              Match stakes are configured between <strong>0.01 NIGHT</strong> and <strong>0.10 NIGHT</strong> per match during the initial test-run phase. Winners claim 2x pooled stakes on-chain.
             </p>
           </section>
         </div>
 
         {/* Modal Footer */}
         <div className="p-4 border-t border-slate-800 bg-[#050B0E] rounded-b-3xl flex items-center justify-between font-mono text-xs">
-          <span className="text-slate-500">&copy; 2026 0G Battleship Team</span>
+          <span className="text-slate-500">&copy; 2026 Battleship MN Team</span>
           <button
             onClick={onClose}
             className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl transition cursor-pointer"

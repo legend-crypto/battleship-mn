@@ -41,16 +41,16 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onGoHome
       >
         <img
           src="/logo.png"
-          alt="0G Battleship Logo"
+          alt="Battleship MN Logo"
           className="w-10 h-10 object-contain rounded-xl shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform"
         />
         <div>
           <h1 className="font-mono text-base sm:text-lg font-black tracking-wider flex items-center gap-1.5 drop-shadow-sm">
-            <span className="text-emerald-600 font-extrabold">0G</span>
             <span className={isDarkTheme ? 'text-white' : 'text-slate-950 font-black'}>BATTLESHIP</span>
+            <span className="text-emerald-600 font-extrabold">MN</span>
           </h1>
           <p className="text-[10px] font-mono text-emerald-600 font-bold uppercase tracking-widest -mt-1">
-            BUILT ON <span className="text-emerald-600 font-extrabold">0G NETWORK</span>
+            BUILT ON <span className="text-emerald-600 font-extrabold">MIDNIGHT NETWORK</span>
           </p>
         </div>
       </div>
@@ -122,7 +122,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onGoHome
           isDarkTheme ? 'bg-[#091015] border-slate-800 text-slate-200' : 'bg-white border-slate-300 text-slate-900 shadow-sm'
         }`}>
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>0G MAINNET (16661)</span>
+          <span>MIDNIGHT NETWORK</span>
           <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
         </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowLeft, ExternalLink, ShieldCheck, Cpu, Lock, Coins, FileText, CheckCircle2, Target, BookOpen, Layers, Terminal } from 'lucide-react';
-import { ZERO_G_MAINNET } from '../config/wagmi';
+import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
 import { BATTLESHIP_STAKING_ADDRESS } from '../config/contract';
 
 interface WhitepaperPageProps {
@@ -21,17 +21,17 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
         </button>
 
         <div className="flex items-center space-x-3">
-          <img src="/logo.png" alt="0G Logo" className="w-8 h-8 object-contain rounded-xl shadow-md" />
+          <img src="/logo.png" alt="Battleship MN Logo" className="w-8 h-8 object-contain rounded-xl shadow-md" />
           <span className="text-xs font-black text-white tracking-widest hidden sm:inline-block">
-            0G BATTLESHIP TECHNICAL WHITEPAPER
+            BATTLESHIP MN TECHNICAL WHITEPAPER
           </span>
           <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40">
-            V1.0 MAINNET
+            V1.0 MIDNIGHT
           </span>
         </div>
 
         <a
-          href={`${ZERO_G_MAINNET.blockExplorers.default.url}/address/${BATTLESHIP_STAKING_ADDRESS}`}
+          href="https://explorer.midnight.network"
           target="_blank"
           rel="noreferrer"
           className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition"
@@ -54,22 +54,22 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
             </span>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
-              0G BATTLESHIP WHITEPAPER
+              BATTLESHIP MN WHITEPAPER
             </h1>
 
             <p className="text-slate-400 font-sans text-sm sm:text-base max-w-2xl leading-relaxed">
-              Decentralized On-Chain Escrow & Real-Time Tactical Naval Strategy Engine on 0G Chain.
+              Decentralized Zero-Knowledge Private-State Naval Strategy Engine on Midnight Network.
             </p>
 
             <div className="pt-4 flex flex-wrap items-center gap-4 text-xs font-mono">
               <span className="bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
-                Author: <strong className="text-emerald-400">0G Battleship Team</strong>
+                Author: <strong className="text-emerald-400">Battleship MN Team</strong>
               </span>
               <span className="bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
-                Network: <strong className="text-emerald-400">0G Mainnet (16661)</strong>
+                Network: <strong className="text-emerald-400">Midnight Network</strong>
               </span>
               <span className="bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
-                Contract: <strong className="text-slate-200">BattleshipStaking.sol</strong>
+                Contract: <strong className="text-slate-200">BattleshipStaking.compact</strong>
               </span>
             </div>
           </div>
@@ -83,7 +83,7 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
           </h2>
           <div className="text-xs sm:text-sm font-sans text-slate-300 leading-relaxed space-y-3">
             <p>
-              <strong>0G Battleship</strong> is a Web3-native tactical naval strategy game powered by <strong>0G Chain</strong> (Zero-Gravity). It combines a framework-agnostic 10x10 grid Battleship engine, an authoritative Socket.io referee server, an audited Hunt-and-Target AI, and smart contract escrow staking (<code className="text-emerald-400">BattleshipStaking.sol</code>).
+              <strong>Battleship MN</strong> is a Web3-native tactical naval strategy game powered by <strong>Midnight Network</strong>. It combines a framework-agnostic 10x10 grid Battleship engine, Compact smart contracts for private-state commitments, zero-knowledge hit/miss resolution proofs, and on-chain escrow staking (<code className="text-emerald-400">BattleshipStaking.compact</code>).
             </p>
             <p>
               Players can engage in two distinct game modes:
@@ -98,7 +98,7 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
               <div className="p-4 bg-[#050B0E] rounded-2xl border border-emerald-500/30 space-y-1">
                 <strong className="text-emerald-400 block text-sm">2. STAKED AI & MULTIPLAYER</strong>
                 <p className="text-slate-400 font-sans text-xs">
-                  On-chain escrow staking on 0G Mainnet (Chain ID 16661). Players claim 2x pooled stakes upon verified victory via off-chain EIP-191 ECDSA attestation signatures.
+                  On-chain escrow staking on Midnight Network. Players claim 2x pooled stakes upon ZK-verified victory via Compact smart contract state transitions.
                 </p>
               </div>
             </div>
@@ -109,21 +109,21 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
         <section className="space-y-6 bg-[#091015] p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl">
           <h2 className="text-lg font-black text-white uppercase flex items-center gap-2 pb-3 border-b border-slate-800">
             <Cpu className="w-5 h-5 text-emerald-400" />
-            <span>1. DECOUPLED 4-TIER ARCHITECTURE</span>
+            <span>1. MIDNIGHT DUAL-LEDGER ARCHITECTURE</span>
           </h2>
 
           <div className="p-5 bg-[#050B0E] rounded-2xl border border-slate-800 font-mono text-xs text-slate-300 space-y-2 overflow-x-auto">
             <span className="text-slate-500 uppercase font-bold">System Flow Overview:</span>
             <pre className="text-emerald-400 text-[11px] leading-relaxed">
-{`  [ Web3 Frontend (Vite + React + Wagmi/Viem) ]
-                       │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
-[ Authoritative Backend ]     [ 0G Mainnet Escrow ]
- (Node.js + Socket.io)     (BattleshipStaking.sol)
-         │
-         ▼
-[ Shared TS Core Engine ]`}
+{`  [ Web3 Frontend (React + Midnight Wallet SDK) ]
+                         │
+           ┌─────────────┴─────────────┐
+           ▼                           ▼
+  [ Public NIGHT Ledger ]    [ Private ZK State & Compact ]
+   (Token Stakes & Escrow)   (Hidden Ships & Hit/Miss Proofs)
+           │
+           ▼
+  [ Shared TS Core Engine ]`}
             </pre>
           </div>
 
@@ -136,23 +136,23 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
             </div>
 
             <div className="p-5 bg-[#050B0E] rounded-2xl border border-slate-800 space-y-2">
-              <span className="text-emerald-400 font-bold text-sm block">1.2 REFEREE SERVER (/backend)</span>
+              <span className="text-emerald-400 font-bold text-sm block">1.2 PRIVATE ZK STATE COMMITMENTS</span>
               <p className="text-slate-400 font-sans text-xs leading-relaxed">
-                Authoritative Socket.io referee server. Maintains server-side fog-of-war state, prevents client move tampering, and acts as the cryptographic Arbiter.
+                Hidden ship placements are committed to Midnight's private ZK state via Compact contracts. Player coordinates remain private until hit or revealed.
               </p>
             </div>
 
             <div className="p-5 bg-[#050B0E] rounded-2xl border border-slate-800 space-y-2">
-              <span className="text-emerald-400 font-bold text-sm block">1.3 ESCROW CONTRACT (/contracts)</span>
+              <span className="text-emerald-400 font-bold text-sm block">1.3 COMPACT ESCROW CONTRACT (/contracts)</span>
               <p className="text-slate-400 font-sans text-xs leading-relaxed">
-                Solidity ^0.8.24 contract with OpenZeppelin ReentrancyGuard, compiled for 0G EVM target <code className="text-emerald-400">cancun</code>. Holds 0G token stakes securely until verified settlement.
+                Written in Midnight's Compact language. Holds token stakes on the public NIGHT ledger while evaluating private ZK proofs for payout distribution.
               </p>
             </div>
 
             <div className="p-5 bg-[#050B0E] rounded-2xl border border-slate-800 space-y-2">
               <span className="text-emerald-400 font-bold text-sm block">1.4 WEB3 FRONTEND (/frontend)</span>
               <p className="text-slate-400 font-sans text-xs leading-relaxed">
-                Vite + React + Tailwind + Wagmi/Viem integration supporting MetaMask and injected Web3 browser wallets.
+                Vite + React + Tailwind + Midnight Wallet integration supporting Lace and injected Web3 browser wallets.
               </p>
             </div>
           </div>
@@ -172,7 +172,7 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
               <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
                 <strong className="text-emerald-400 block mb-1">AUDITED DATA ACCESS SCOPING:</strong>
                 <p className="text-slate-400 font-sans text-xs">
-                  The AI targeting function receives strictly the tracking grid of prior HIT/MISS results and remaining vessel lengths. It has zero access to player ship coordinates prior to hits.
+                  The AI targeting function receives strictly the tracking grid of prior HIT/MISS results and remaining vessel lengths. It has zero access to private player ship coordinates.
                 </p>
               </div>
               <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
@@ -191,51 +191,51 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
           </div>
         </section>
 
-        {/* 3. Cryptographic Attestation */}
+        {/* 3. ZK Proof Resolution */}
         <section className="space-y-4 bg-[#091015] p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl">
           <h2 className="text-lg font-black text-white uppercase flex items-center gap-2 pb-3 border-b border-slate-800">
             <Lock className="w-5 h-5 text-emerald-400" />
-            <span>3. CRYPTOGRAPHIC ATTESTATION SCHEME</span>
+            <span>3. ZERO-KNOWLEDGE HIT/MISS RESOLUTION</span>
           </h2>
           <div className="space-y-3 text-xs sm:text-sm font-sans text-slate-300 leading-relaxed">
             <p>
-              To eliminate high per-turn gas fees, individual game moves occur off-chain over WebSocket connections. When a player sinks all 5 enemy vessels, the server generates an off-chain EIP-191 ECDSA attestation signature:
+              To ensure absolute privacy and prevent cheating, game moves generate zero-knowledge proofs verifying hit/miss accuracy against stored board commitments without revealing unshot ship locations:
             </p>
             <div className="p-4 bg-[#050B0E] rounded-2xl border border-emerald-500/40 font-mono text-xs space-y-2">
-              <span className="text-emerald-400 font-bold block">EIP-191 Signed Message Hash:</span>
+              <span className="text-emerald-400 font-bold block">Compact ZK Circuit Commitment:</span>
               <div className="p-3 bg-[#091015] rounded-xl border border-slate-800 text-slate-200 text-[11px] overflow-x-auto">
-                keccak256(abi.encodePacked("WINNER_PAYOUT", matchIdBytes32, winnerAddress, totalPayoutWei))
+                verify_hit_proof(boardCommitment, targetPos, resultHash) -&gt; zkpResult
               </div>
             </div>
           </div>
         </section>
 
-        {/* 4. Mainnet Specs */}
+        {/* 4. Midnight Network Specs */}
         <section className="space-y-4 bg-[#091015] p-6 sm:p-8 rounded-3xl border border-emerald-500/40 shadow-xl">
           <h2 className="text-lg font-black text-emerald-400 uppercase flex items-center gap-2 pb-3 border-b border-slate-800">
             <ShieldCheck className="w-5 h-5" />
-            <span>4. 0G MAINNET CONTRACT SPECIFICATIONS</span>
+            <span>4. MIDNIGHT NETWORK CONTRACT SPECIFICATIONS</span>
           </h2>
 
           <div className="grid sm:grid-cols-2 gap-4 font-mono text-xs">
             <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
-              <span className="text-slate-500 block mb-1">Contract Address:</span>
-              <span className="text-white font-bold text-xs break-all">{BATTLESHIP_STAKING_ADDRESS}</span>
+              <span className="text-slate-500 block mb-1">Escrow Contract:</span>
+              <span className="text-white font-bold text-xs break-all">BattleshipStaking.compact</span>
             </div>
             <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
-              <span className="text-slate-500 block mb-1">Network / Chain ID:</span>
-              <span className="text-emerald-400 font-bold">0G Mainnet (Chain ID 16661)</span>
+              <span className="text-slate-500 block mb-1">Target Network:</span>
+              <span className="text-emerald-400 font-bold">Midnight Network</span>
             </div>
           </div>
 
           <div className="pt-2">
             <a
-              href={`${ZERO_G_MAINNET.blockExplorers.default.url}/address/${BATTLESHIP_STAKING_ADDRESS}`}
+              href="https://explorer.midnight.network"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 underline hover:text-emerald-300"
             >
-              <span>View Verified Contract on 0G Chainscan Explorer</span>
+              <span>View Verified Contract on Midnight Explorer</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
@@ -245,8 +245,8 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
       {/* Footer Bar */}
       <footer className="w-full bg-[#091015] border-t border-slate-800 py-6 px-6 md:px-12 font-mono text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center space-x-2">
-          <img src="/logo.png" alt="0G Logo" className="w-6 h-6 object-contain" />
-          <span>&copy; 2026 0G Battleship Team. Built for 0G Network.</span>
+          <img src="/logo.png" alt="Battleship MN Logo" className="w-6 h-6 object-contain" />
+          <span>&copy; 2026 Battleship MN Team. Built for Midnight Network.</span>
         </div>
 
         <button
