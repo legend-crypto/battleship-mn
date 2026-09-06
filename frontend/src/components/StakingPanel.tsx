@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useMidnightWallet } from '../context/MidnightWalletContext';
 import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
-import { Coins, ExternalLink, Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { CompactContractService } from '../services/compactContractService';
+import { Coins, ExternalLink, Lock, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Clock } from 'lucide-react';
 
 interface StakingPanelProps {
   matchIdBytes32: string;
@@ -9,6 +10,7 @@ interface StakingPanelProps {
   role: 'host' | 'guest';
   hasStaked: boolean;
   onStakeConfirmed: (txHash: string) => void;
+  boardCommitment?: string;
 }
 
 export const StakingPanel: React.FC<StakingPanelProps> = ({
@@ -16,9 +18,10 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
   stakeAmountEth,
   role,
   hasStaked,
-  onStakeConfirmed
+  onStakeConfirmed,
+  boardCommitment = '0xaaf66062a83c21ca947f63e67f90fe68526bc4ea1124eeb18812e7b63d9f8f83d'
 }) => {
-  const { isConnected } = useMidnightWallet();
+  const { isConnected, connect, isConnecting } = useMidnightWallet();
 
   const [txHash, setTxHash] = useState<string | undefined>();
   const [isPending, setIsPending] = useState<boolean>(false);
@@ -26,20 +29,29 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
 
   const handleDepositStake = async () => {
     setErrorMessage(null);
+
+    if (!isConnected) {
+      try {
+        await connect();
+      } catch (err: any) {
+        setErrorMessage(err?.message || 'Please connect Lace Wallet extension first.');
+        return;
+      }
+    }
+
     setIsPending(true);
 
     try {
-      // TODO: Compact contract call for BattleshipStaking.compact escrow deposit
-      // Execution circuit: BattleshipStaking.compact -> create_match / join_match
-      console.log(`[Compact Contract Call Placeholder] Staking ${stakeAmountEth} NIGHT for match ${matchIdBytes32} as ${role}`);
+      let hash = '';
+      if (role === 'host') {
+        hash = await CompactContractService.createGame(matchIdBytes32, boardCommitment, stakeAmountEth);
+      } else {
+        hash = await CompactContractService.joinGame(matchIdBytes32, boardCommitment);
+      }
 
-      // Simulate on-chain confirmation for preview
-      setTimeout(() => {
-        const mockTxHash = `0xmn_${Date.now().toString(16)}`;
-        setTxHash(mockTxHash);
-        setIsPending(false);
-        onStakeConfirmed(mockTxHash);
-      }, 1200);
+      setTxHash(hash);
+      setIsPending(false);
+      onStakeConfirmed(hash);
     } catch (err: any) {
       console.error('Staking error:', err);
       setErrorMessage(err?.message || 'Deposit transaction failed');
@@ -52,25 +64,29 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <h3 className="text-xs font-black tracking-widest text-white uppercase flex items-center gap-2">
           <Coins className="w-4 h-4 text-emerald-400" />
-          <span>MIDNIGHT TOKEN ESCROW STAKE</span>
+          <span>NIGHT TOKEN ESCROW STAKE</span>
         </h3>
         <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded border border-emerald-500/40">
           {MIDNIGHT_TESTNET.name}
         </span>
       </div>
 
-      <div className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl space-y-2 text-xs">
+      <div className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl space-y-2.5 text-xs">
         <div className="flex justify-between items-center text-slate-400">
-          <span>Required Match Stake:</span>
+          <span>Required Wager Stake:</span>
           <span className="text-emerald-400 font-bold text-sm">{stakeAmountEth} NIGHT</span>
         </div>
-        <div className="flex justify-between items-center text-slate-400">
+        <div className="flex justify-between items-center text-slate-400 text-[11px]">
+          <span>Execution Gas Fee:</span>
+          <span className="text-slate-300 font-semibold">Auto-Paid in DUST</span>
+        </div>
+        <div className="flex justify-between items-center text-slate-400 text-[11px]">
           <span>Escrow Smart Contract:</span>
           <span className="text-slate-200 font-mono text-[10px]">BattleshipStaking.compact</span>
         </div>
-        <div className="flex justify-between items-center text-slate-400">
-          <span>Target Network:</span>
-          <span className="text-emerald-400 font-semibold">{MIDNIGHT_TESTNET.name}</span>
+        <div className="flex justify-between items-center text-slate-400 text-[11px]">
+          <span>Inactivity Timeout:</span>
+          <span className="text-amber-400 font-mono text-[10px]">60s Dispute / 1h Refund</span>
         </div>
       </div>
 
@@ -78,10 +94,10 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
         <div className="p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-xs text-emerald-300 space-y-2">
           <div className="flex items-center gap-2 font-bold">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Midnight Escrow Deposit Confirmed!</span>
+            <span>NIGHT Escrow Deposit Confirmed!</span>
           </div>
           <p className="text-[11px] text-emerald-400/80 font-sans">
-            Your stake is safely escrowed in the Compact smart contract on Midnight Network.
+            Your {stakeAmountEth} NIGHT stake is safely held in contract escrow. Winner receives 2x total pot ({parseFloat(stakeAmountEth) * 2} NIGHT).
           </p>
           {txHash && (
             <a
@@ -90,36 +106,40 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
               rel="noreferrer"
               className="text-[10px] text-emerald-400 underline font-mono flex items-center gap-1 mt-1"
             >
-              <span>View Transaction on Midnight Explorer</span>
+              <span>View Escrow Tx on Midnight Explorer</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           )}
         </div>
       ) : (
         <div className="space-y-3">
-          {!isConnected ? (
-            <div className="p-3 bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs rounded-xl text-center">
-              Connect Lace Wallet in top header to deposit stake.
-            </div>
-          ) : (
-            <button
-              disabled={isPending}
-              onClick={handleDepositStake}
-              className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>CONFIRMING ON MIDNIGHT...</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-4 h-4" />
-                  <span>DEPOSIT {stakeAmountEth} NIGHT STAKE</span>
-                </>
-              )}
-            </button>
-          )}
+          <button
+            disabled={isPending || isConnecting}
+            onClick={handleDepositStake}
+            className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>SIGNING TRANSACTION IN LACE WALLET...</span>
+              </>
+            ) : isConnecting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>CONNECTING LACE WALLET...</span>
+              </>
+            ) : !isConnected ? (
+              <>
+                <Lock className="w-4 h-4" />
+                <span>CONNECT WALLET & DEPOSIT {stakeAmountEth} NIGHT STAKE</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-4 h-4" />
+                <span>DEPOSIT {stakeAmountEth} NIGHT STAKE</span>
+              </>
+            )}
+          </button>
 
           {errorMessage && (
             <div className="p-3 bg-red-950/80 border border-red-800 text-red-300 text-[11px] rounded-xl flex items-center gap-2">

@@ -3,16 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "echo 'Contracts ready'",
-    "compile": "npx hardhat compile",
-    "test": "npx hardhat test",
-    "deploy:testnet": "npx hardhat run scripts/deploy.ts --network zeroGTestnet"
+    "build": "npx ts-node scripts/compile-compact.ts",
+    "compile:compact": "npx ts-node scripts/compile-compact.ts",
+    "test:qa": "npx ts-node test/battleship.compact.test.ts",
+    "test:proof-server": "npx ts-node scripts/test-proof-server.ts",
+    "deploy:midnight": "npx ts-node scripts/deploy-midnight.ts",
+    "setup:stack": "powershell scripts/setup-midnight-stack.ps1",
+    "enable:virtualization": "powershell scripts/enable-windows-virtualization.ps1",
+    "test": "npx ts-node scripts/compile-compact.ts && npx ts-node test/battleship.compact.test.ts && npx ts-node scripts/test-proof-server.ts"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@openzeppelin/contracts": "^5.0.2",
+    "@types/node": "^20.12.7",
     "dotenv": "^16.4.5",
-    "hardhat": "^2.22.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   }
 }

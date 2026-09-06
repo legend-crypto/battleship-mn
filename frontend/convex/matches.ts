@@ -5,11 +5,19 @@ import { v } from 'convex/values';
 export const listOpenLobbies = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const waiting = await ctx.db
       .query('matches')
       .withIndex('by_status', (q) => q.eq('status', 'WAITING'))
       .order('desc')
       .take(20);
+
+    const open = await ctx.db
+      .query('matches')
+      .withIndex('by_status', (q) => q.eq('status', 'OPEN'))
+      .order('desc')
+      .take(20);
+
+    return [...open, ...waiting];
   }
 });
 
@@ -25,7 +33,7 @@ export const getMatchByBytes32 = query({
   }
 });
 
-// Mutation to host a new match lobby
+// Mutation to host a new open game lobby
 export const createLobby = mutation({
   args: {
     matchIdBytes32: v.string(),
@@ -44,14 +52,15 @@ export const createLobby = mutation({
     const id = await ctx.db.insert('matches', {
       matchIdBytes32: args.matchIdBytes32,
       stakeAmountEth: args.stakeAmountEth,
-      status: 'WAITING',
+      playerCount: 1,
+      status: 'OPEN',
       hostAddress: args.hostAddress,
       hostToken: args.hostToken,
       logs: [
         {
           id: `${Date.now()}-1`,
           sender: 'PLAYER',
-          message: `Lobby created by ${args.hostAddress.slice(0, 6)}...${args.hostAddress.slice(-4)}. Stake: ${args.stakeAmountEth} NIGHT`,
+          message: `Open game lobby registered by ${args.hostAddress.slice(0, 6)}...${args.hostAddress.slice(-4)}`,
           timestamp: new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' }),
           type: 'info'
         }
@@ -81,13 +90,14 @@ export const joinLobby = mutation({
     await ctx.db.patch(match._id, {
       guestAddress: args.guestAddress,
       guestToken: args.guestToken,
-      status: 'PLACEMENT',
+      playerCount: 2,
+      status: 'IN_PROGRESS',
       logs: [
         ...match.logs,
         {
           id: `${Date.now()}-join`,
           sender: 'OPPONENT',
-          message: `Player 2 (${args.guestAddress.slice(0, 6)}...${args.guestAddress.slice(-4)}) joined match! Deploy fleet.`,
+          message: `Player 2 (${args.guestAddress.slice(0, 6)}...${args.guestAddress.slice(-4)}) joined open game! Fleet deployment ready.`,
           timestamp: new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' }),
           type: 'info'
         }

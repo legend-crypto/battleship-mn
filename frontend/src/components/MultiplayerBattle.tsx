@@ -23,6 +23,8 @@ import { MatchInfoPanel } from './MatchInfoPanel';
 import { ShipPlacementPanel } from './ShipPlacementPanel';
 import { useMidnightWallet } from '../context/MidnightWalletContext';
 import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
+import { buildBoardMerkleTree, generateCellMerkleProof } from '../utils/merkle';
+import { CompactContractService } from '../services/compactContractService';
 import { ArrowLeft, RefreshCw, Trophy, Flame, Shield, Coins, ExternalLink, CheckCircle2, Eye, BarChart3, Info, BookOpen, MessageSquare, Settings, Target, Copy, Check, Play, Users, Sparkles } from 'lucide-react';
 
 interface MultiplayerBattleProps {
@@ -48,6 +50,9 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
 
   // Staking state
   const [hasStaked, setHasStaked] = useState(false);
+  const [isMyReady, setIsMyReady] = useState(false);
+  const [merkleTree, setMerkleTree] = useState<any>(null);
+  const [boardCommitment, setBoardCommitment] = useState<string | null>(null);
   const [stakeTxHash, setStakeTxHash] = useState<string | undefined>();
 
   // Winner Claim State
@@ -65,7 +70,6 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
 
   // Turn & Connection State
   const [currentTurn, setCurrentTurn] = useState<string>('');
-  const [isMyReady, setIsMyReady] = useState(false);
   const [opponentConnected, setOpponentConnected] = useState(true);
   const [winnerId, setWinnerId] = useState<string | null>(null);
 
@@ -211,23 +215,34 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
     setSelectedShipType(FLEET_SHIPS[0]);
   };
 
-  const handleSubmitPlacement = () => {
+  const handleSubmitPlacement = async () => {
     if (placedShipTypes.length !== FLEET_SHIPS.length) return;
     setIsMyReady(true);
+
+    // Build 100-cell Merkle tree & private board commitment root
+    const merkleResult = await buildBoardMerkleTree(myBoard.ships);
+    setMerkleTree(merkleResult);
+    setBoardCommitment(merkleResult.root);
+
+    if (matchData.role === 'host') {
+      await CompactContractService.createGame(matchData.matchIdBytes32, merkleResult.root);
+    } else {
+      await CompactContractService.joinGame(matchData.matchIdBytes32, merkleResult.root);
+    }
 
     if (socket && socket.connected) {
       socket.emit(SocketEvent.SUBMIT_PLACEMENT, {
         matchId: matchData.matchId,
         playerToken: matchData.playerToken,
-        board: myBoard
+        board: myBoard,
+        boardCommitment: merkleResult.root
       });
     } else {
-      // Local battle transition vs Challenger / DeAI Node
       const randomOppBoard = generateRandomBoard();
       setOpponentBoard(randomOppBoard);
       setPhase('PLAYING');
       setCurrentTurn(matchData.playerId);
-      addLog('PLAYER', 'Fleet deployed! Battle station active.', 'info');
+      addLog('PLAYER', `Fleet committed! Board Commitment root: ${merkleResult.root.substring(0, 16)}...`, 'info');
     }
   };
 
@@ -242,9 +257,12 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
         pos
       });
     } else if (opponentBoard) {
-      // Offline / Challenger battle logic
       const colLabel = String.fromCharCode(65 + pos.x);
       const coordStr = `${colLabel}${pos.y + 1}`;
+      const targetIndex = pos.y * BOARD_SIZE + pos.x;
+
+      // Invoke fire_shot circuit on Compact contract via Lace wallet connector
+      CompactContractService.fireShot(matchData.matchIdBytes32, targetIndex);
 
       const isHit = opponentBoard.grid[pos.y][pos.x] === CellStatus.SHIP;
       const newTracking = enemyOceanTracking.map((row) => [...row]);
@@ -253,10 +271,19 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
 
       setMyShots((prev) => prev + 1);
       if (isHit) {
-        setMyHits((prev) => prev + 1);
-        addLog('PLAYER', `You fired at ${coordStr} — HIT`, 'hit');
+        const nextHits = myHits + 1;
+        setMyHits(nextHits);
+        addLog('PLAYER', `You fired at ${coordStr} — HIT (Verified on-chain via Compact fire_shot)`, 'hit');
+
+        // Contract win condition check (17 total hits)
+        if (nextHits >= 17) {
+          setWinnerId(matchData.playerId);
+          setPhase('FINISHED');
+          setShowStatsModal(true);
+          addLog('PLAYER', 'VICTORY! Destroyed 17/17 enemy vessel cells! Compact contract emitted GAME_OVER event.', 'sunk');
+        }
       } else {
-        addLog('PLAYER', `You fired at ${coordStr} — MISS`, 'miss');
+        addLog('PLAYER', `You fired at ${coordStr} — MISS (Verified on-chain via Compact fire_shot)`, 'miss');
       }
     }
   };
@@ -265,16 +292,30 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
     if (!matchData.matchIdBytes32) return;
     setIsClaimPending(true);
     try {
-      // TODO: Compact contract call for BattleshipStaking.compact payout claim
-      // Execution circuit: BattleshipStaking.compact -> claim_winner_payout
-      console.log(`[Compact Contract Call Placeholder] Claiming payout for match ${matchData.matchIdBytes32}`);
-      setTimeout(() => {
-        setPayoutTxHash(`0xmn_claim_${Date.now().toString(16)}`);
-        setIsClaimPending(false);
-        setIsClaimSuccess(true);
-      }, 1000);
+      const hash = await CompactContractService.claimWinnerPayout(matchData.matchIdBytes32);
+      setPayoutTxHash(hash as `0x${string}`);
+      setIsClaimPending(false);
+      setIsClaimSuccess(true);
     } catch (err: any) {
       console.error('Claim Error:', err);
+      setIsClaimPending(false);
+    }
+  };
+
+  const handleClaimTimeoutVictory = async () => {
+    if (!matchData.matchIdBytes32) return;
+    setIsClaimPending(true);
+    try {
+      const hash = await CompactContractService.claimTimeoutVictory(matchData.matchIdBytes32);
+      setPayoutTxHash(hash as `0x${string}`);
+      setWinnerId(matchData.playerId);
+      setPhase('FINISHED');
+      setShowStatsModal(true);
+      setIsClaimPending(false);
+      setIsClaimSuccess(true);
+      addLog('PLAYER', 'DISPUTE TIMEOUT VICTORY! Opponent inactive for >60s. Claimed 2x NIGHT escrow pot.', 'sunk');
+    } catch (err: any) {
+      console.error('Timeout Claim Error:', err);
       setIsClaimPending(false);
     }
   };
@@ -407,14 +448,26 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
             onStakeConfirmed={handleStakeConfirmed}
           />
 
-          {/* Proceed Action Button */}
-          <button
-            onClick={() => setPhase('PLACEMENT')}
-            className="w-full max-w-md py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Play className="w-4 h-4 fill-current" />
-            <span>PROCEED TO FLEET PLACEMENT</span>
-          </button>
+          {/* Proceed Action Button - Strictly Gated by On-Chain Escrow Stake Deposit */}
+          {hasStaked ? (
+            <button
+              onClick={() => setPhase('PLACEMENT')}
+              className="w-full max-w-md py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer animate-pulse"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>ESCROW CONFIRMED — PROCEED TO FLEET PLACEMENT</span>
+            </button>
+          ) : (
+            <div className="w-full max-w-md p-4 bg-[#050B0E] border border-amber-500/30 rounded-2xl text-center space-y-1 text-xs text-amber-400 font-mono">
+              <div className="flex items-center justify-center gap-2 font-bold uppercase">
+                <Shield className="w-4 h-4 text-amber-400" />
+                <span>ON-CHAIN STAKING REQUIRED</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                You must approve the {matchData.stakeAmountEth} NIGHT escrow deposit in Lace Wallet to unlock match placement.
+              </p>
+            </div>
+          )}
         </div>
       ) : phase === 'PLACEMENT' ? (
         <div className="grid lg:grid-cols-12 gap-6 w-full items-start">

@@ -5,10 +5,13 @@ export default defineSchema({
   matches: defineTable({
     matchIdBytes32: v.string(),
     stakeAmountEth: v.string(),
+    playerCount: v.optional(v.number()),
     status: v.union(
+      v.literal('OPEN'),
       v.literal('WAITING'),
       v.literal('PLACEMENT'),
       v.literal('PLAYING'),
+      v.literal('IN_PROGRESS'),
       v.literal('FINISHED'),
       v.literal('CANCELLED')
     ),

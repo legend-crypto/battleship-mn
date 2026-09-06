@@ -5,6 +5,7 @@ import { LocalAIGame } from './components/LocalAIGame';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { MultiplayerBattle } from './components/MultiplayerBattle';
 import { WhitepaperPage } from './components/WhitepaperPage';
+import { MatchHistoryModal } from './components/MatchHistoryModal';
 import { X, Trophy, Swords, Info, ShieldCheck } from 'lucide-react';
 import { BATTLESHIP_STAKING_ADDRESS } from './config/contract';
 
@@ -174,6 +175,11 @@ export const App: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* MATCHES HISTORY Modal */}
+      {activeModal === 'MATCHES' && (
+        <MatchHistoryModal onClose={() => setActiveModal(null)} />
       )}
 
       {/* LEADERBOARD Modal */}

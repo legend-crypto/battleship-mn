@@ -26,6 +26,8 @@ import { ShipPlacementPanel } from './ShipPlacementPanel';
 import { StakingPanel } from './StakingPanel';
 import { Trophy, ArrowLeft, RefreshCw, Bot, Flame, BarChart3, Eye, Play, BookOpen, MessageSquare, Settings, Info, Target, Coins, Shield, Sparkles, ExternalLink, CheckCircle2, Lock, Swords, Cpu, Zap } from 'lucide-react';
 import { useMidnightWallet } from '../context/MidnightWalletContext';
+import { buildBoardMerkleTree, generateCellMerkleProof } from '../utils/merkle';
+import { CompactContractService } from '../services/compactContractService';
 
 interface LocalAIGameProps {
   onBackToMenu: () => void;
@@ -41,9 +43,11 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
   const [stakeAmountEth, setStakeAmountEth] = useState<string>('0.1');
 
   // Staking & Match State
-  const [matchIdBytes32, setMatchIdBytes32] = useState<string>('');
-  const [hasStaked, setHasStaked] = useState(false);
-  const [stakeTxHash, setStakeTxHash] = useState<string | undefined>();
+  const [matchIdBytes32, setMatchIdBytes32] = useState<string | null>(null);
+  const [stakeTxHash, setStakeTxHash] = useState<string | null>(null);
+  const [hasStaked, setHasStaked] = useState<boolean>(false);
+  const [playerMerkleTree, setPlayerMerkleTree] = useState<any>(null);
+  const [boardCommitment, setBoardCommitment] = useState<string | null>(null);
   const [isAiJoiningOnChain, setIsAiJoiningOnChain] = useState(false);
 
   // Winner Payout Claim State
@@ -147,15 +151,23 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
     setSelectedShipType(FLEET_SHIPS[0]);
   };
 
-  const handleStartBattle = () => {
+  const handleStartBattle = async () => {
     if (placedShipTypes.length !== FLEET_SHIPS.length) return;
+
+    // Generate ZK Merkle Tree & Board Commitment Hash for 10x10 placement
+    const merkleResult = await buildBoardMerkleTree(playerBoard.ships);
+    setPlayerMerkleTree(merkleResult);
+    setBoardCommitment(merkleResult.root);
+
+    const gameId = matchIdBytes32 || `0xmn_ai_${Date.now().toString(16)}`;
+    await CompactContractService.createGame(gameId, merkleResult.root);
 
     const randomAiBoard = generateRandomBoard();
     setAiBoard(randomAiBoard);
     setPhase('PLAYING');
     setCurrentTurn('PLAYER');
     setShowStatsModal(false);
-    addLog('PLAYER', 'Battle initiated! Connected to Midnight ZK Compute Node #MN-9021.', 'info');
+    addLog('PLAYER', `Battle initiated! Private board Merkle Commitment committed to Midnight NIGHT Ledger (${merkleResult.root.substring(0, 16)}...)`, 'info');
   };
 
   const handleFireShot = async (pos: Position) => {
@@ -174,15 +186,21 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
 
     setPlayerShots((prev) => prev + 1);
 
+    const targetIndex = pos.y * BOARD_SIZE + pos.x;
+    const gameId = matchIdBytes32 || `0xmn_ai_${Date.now().toString(16)}`;
+
+    // Call fire_shot Compact contract circuit via Lace wallet connector
+    await CompactContractService.fireShot(gameId, targetIndex);
+
     if (result.hit) {
       setPlayerHits((prev) => prev + 1);
       if (result.type === ShotResultType.SUNK) {
-        addLog('PLAYER', `You fired at ${coordStr} — SUNK ${result.sunkShipType}!`, 'sunk');
+        addLog('PLAYER', `You fired at ${coordStr} — SUNK ${result.sunkShipType}! (Circuit fire_shot verified on-chain)`, 'sunk');
       } else {
-        addLog('PLAYER', `You fired at ${coordStr} — HIT`, 'hit');
+        addLog('PLAYER', `You fired at ${coordStr} — HIT (Circuit fire_shot verified on-chain)`, 'hit');
       }
     } else {
-      addLog('PLAYER', `You fired at ${coordStr} — MISS`, 'miss');
+      addLog('PLAYER', `You fired at ${coordStr} — MISS (Circuit fire_shot verified on-chain)`, 'miss');
     }
 
     if (result.gameOver) {

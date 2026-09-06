@@ -35,21 +35,25 @@ const RealtimeConvexLobbies: React.FC<{
     console.warn('Convex listOpenLobbies query warning:', e);
   }
 
-  const openLobbies: MatchSummary[] = (convexLobbies && convexLobbies.length > 0)
+  const openLobbies = (convexLobbies && convexLobbies.length > 0)
     ? convexLobbies.map((m: any) => ({
         matchId: m._id,
         matchCode: m.matchIdBytes32 ? m.matchIdBytes32.slice(-6).toUpperCase() : '849201',
-        stakeAmountEth: m.stakeAmountEth || '0.1',
         hostName: m.hostAddress ? `${m.hostAddress.slice(0, 6)}...${m.hostAddress.slice(-4)}` : 'Commander Host',
-        status: 'WAITING'
+        playerCount: m.playerCount || 1,
+        status: m.status || 'OPEN'
       }))
-    : localLobbies;
+    : localLobbies.map((l: any) => ({
+        ...l,
+        playerCount: 1,
+        status: 'OPEN'
+      }));
 
   return (
     <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
       {openLobbies.length === 0 ? (
         <div className="text-center py-6 text-slate-500 text-xs font-sans">
-          No open lobbies right now. Create a new staked match on the left!
+          No open lobbies right now. Create a new open game on the left!
         </div>
       ) : (
         openLobbies.map((lobby) => (
@@ -58,17 +62,23 @@ const RealtimeConvexLobbies: React.FC<{
             className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs font-mono"
           >
             <div>
-              <span className="font-bold text-white block">{lobby.hostName}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white block">{lobby.hostName}</span>
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                  {lobby.playerCount}/2 PLAYERS
+                </span>
+              </div>
               <span className="text-[10px] text-slate-400 font-mono">
-                Stake: <strong className="text-emerald-400">{lobby.stakeAmountEth} NIGHT</strong> • #{lobby.matchCode}
+                Compact Master Contract • #{lobby.matchCode}
               </span>
             </div>
 
             <button
               onClick={() => onJoinMatch(lobby.matchCode, lobby.matchId)}
-              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg transition shadow cursor-pointer flex items-center gap-1"
+              className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg transition shadow cursor-pointer flex items-center gap-1 uppercase"
             >
-              <span>JOIN & STAKE</span>
+              <LogIn className="w-3.5 h-3.5" />
+              <span>JOIN GAME</span>
             </button>
           </div>
         ))

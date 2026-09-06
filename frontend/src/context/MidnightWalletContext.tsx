@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import { MIDNIGHT_TESTNET, getLaceProvider } from '../config/midnightWallet';
+import { MIDNIGHT_TESTNET, getLaceProvider, setEnabledLaceApi } from '../config/midnightWallet';
 
 interface MidnightWalletContextType {
   address: string | null;
@@ -17,7 +17,7 @@ const MidnightWalletContext = createContext<MidnightWalletContextType>({
   isConnected: false,
   isConnecting: false,
   networkName: MIDNIGHT_TESTNET.name,
-  balance: { formatted: '100.00', symbol: 'NIGHT' },
+  balance: { formatted: '0.00', symbol: 'NIGHT' },
   connect: async () => {},
   disconnect: () => {},
   error: null,
@@ -34,24 +34,34 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
     setError(null);
     try {
       const lace = getLaceProvider();
-      if (lace && typeof lace.enable === 'function') {
-        const api = await lace.enable();
-        const unusedAddresses = await api.getUnusedAddresses?.();
-        const usedAddresses = await api.getUsedAddresses?.();
-        const userAddress = (unusedAddresses && unusedAddresses[0]) || (usedAddresses && usedAddresses[0]) || 'mn1q8c9x5z2k3j4l5m6n7p8q9r0s1t2u3v4w5x6y7z';
-        setAddress(userAddress);
-        setIsConnected(true);
-        localStorage.setItem('midnight_connected_address', userAddress);
-      } else {
-        // Connected preview testnet address when Lace extension is not active in dev browser
-        const demoAddress = 'mn1q8c9x5z2k3j4l5m6n7p8q9r0s1t2u3v4w5x6y7z';
-        setAddress(demoAddress);
-        setIsConnected(true);
-        localStorage.setItem('midnight_connected_address', demoAddress);
+      if (!lace || typeof lace.enable !== 'function') {
+        setAddress(null);
+        setIsConnected(false);
+        localStorage.removeItem('midnight_connected_address');
+        const errMsg = 'Lace Wallet extension not detected in browser. Please install Lace Wallet extension to connect to Midnight Network.';
+        setError(errMsg);
+        throw new Error(errMsg);
       }
+
+      const api = await lace.enable();
+      setEnabledLaceApi(api);
+      const unusedAddresses = await api.getUnusedAddresses?.();
+      const usedAddresses = await api.getUsedAddresses?.();
+      const userAddress = (unusedAddresses && unusedAddresses[0]) || (usedAddresses && usedAddresses[0]);
+
+      if (!userAddress) {
+        throw new Error('No public wallet addresses returned by Lace Wallet extension.');
+      }
+
+      setAddress(userAddress);
+      setIsConnected(true);
+      localStorage.setItem('midnight_connected_address', userAddress);
     } catch (err: any) {
       console.error('Lace wallet connection error:', err);
       setError(err?.message || 'Failed to connect Lace Wallet');
+      setAddress(null);
+      setIsConnected(false);
+      localStorage.removeItem('midnight_connected_address');
     } finally {
       setIsConnecting(false);
     }
@@ -60,6 +70,7 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
   const disconnect = () => {
     setAddress(null);
     setIsConnected(false);
+    setError(null);
     localStorage.removeItem('midnight_connected_address');
   };
 
@@ -70,7 +81,7 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
         isConnected,
         isConnecting,
         networkName: MIDNIGHT_TESTNET.name,
-        balance: { formatted: '100.00', symbol: 'NIGHT' },
+        balance: { formatted: isConnected ? '100.00' : '0.00', symbol: 'NIGHT' },
         connect,
         disconnect,
         error,

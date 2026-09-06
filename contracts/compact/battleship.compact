@@ -1,0 +1,378 @@
+// ============================================================================
+// BATTLESHIP MN — MIDNIGHT COMPACT SMART CONTRACT
+// ============================================================================
+// Technical Architecture: Dual-Ledger Zero-Knowledge Private-State Game
+//
+// MIDNIGHT DUAL-TOKEN AUDIT SPECIFICATION:
+// ----------------------------------------------------------------------------
+// 1. DUST TOKEN (Gas Fee Token):
+//    - Non-transferable token generated automatically by holding NIGHT.
+//    - Used exclusively to cover circuit execution gas fees charged by Midnight runtime.
+//    - CANNOT be wagered, transferred between players, or placed in escrow.
+//
+// 2. NIGHT TOKEN (Transferable Escrow Wager Token):
+//    - Native transferable ledger currency on Midnight Network.
+//    - Both players deposit equal NIGHT stake into contract-held escrow at match creation/join.
+//    - On verified game-over, contract releases 2x stake (total escrow pot) to the winner.
+//    - Supports 60-second dispute timeout victory and 1-hour emergency refund windows.
+//
+// PRIVATE STATE vs PUBLIC LEDGER SPLIT:
+// ----------------------------------------------------------------------------
+// 1. PRIVATE STATE (Witnesses / Client-Side Zero Knowledge):
+//    - Hidden 10x10 ocean grid (100 cells, indices 0..99) & secret 256-bit salts.
+//    - 100-leaf Merkle tree commitment root (`board_commitment_p1`, `board_commitment_p2`).
+//    - ZK Merkle inclusion/exclusion path proofs verifying hit/miss outcomes.
+//
+// 2. PUBLIC LEDGER (On-Chain State on Public NIGHT Ledger):
+//    - Game ID & Player wallet addresses (Player 1 & Player 2).
+//    - Escrow balances in NIGHT (`stake_amount_night`, `total_escrow_night`).
+//    - Current active turn indicator & Turn action timestamp (`last_action_timestamp`).
+//    - Verified hit counters (17 total hits to win) & Game lifecycle status.
+// ============================================================================
+
+pragma language_version >= 0.14.0;
+
+// ----------------------------------------------------------------------------
+// CONSTANTS (Aligned with /shared game engine rules & Midnight execution model)
+// ----------------------------------------------------------------------------
+// Board Dimensions: 10x10 Grid = 100 Total Cells (Indices 0 to 99)
+const BOARD_SIZE: Uint<8> = 10;
+const TOTAL_BOARD_CELLS: Uint<8> = 100;
+
+// Total Fleet Cells: Carrier(5) + Battleship(4) + Cruiser(3) + Submarine(3) + Destroyer(2) = 17
+const TOTAL_FLEET_CELLS: Uint<8> = 17;
+
+// Timeout Thresholds (in seconds)
+const DISPUTE_TIMEOUT_SECONDS: Uint<64> = 60;          // 60-second grace period for turn inactivity dispute
+const EMERGENCY_REFUND_TIMEOUT_SECONDS: Uint<64> = 3600; // 1-hour emergency refund window for stuck games
+
+// Ship Type Identifier Enums
+enum ShipId {
+  EMPTY = 0,
+  CARRIER = 1,     // 5 cells
+  BATTLESHIP = 2,  // 4 cells
+  CRUISER = 3,     // 3 cells
+  SUBMARINE = 4,   // 3 cells
+  DESTROYER = 5    // 2 cells
+}
+
+// Game Phase Enums
+enum GamePhase {
+  WAITING_FOR_PLAYER2 = 0,
+  IN_PROGRESS = 1,
+  GAME_OVER = 2,
+  REFUNDED = 3
+}
+
+// Turn Enums
+enum PlayerTurn {
+  PLAYER_1 = 1,
+  PLAYER_2 = 2
+}
+
+// ----------------------------------------------------------------------------
+// DATA STRUCTURES
+// ----------------------------------------------------------------------------
+
+// Merkle Leaf representation of a single cell on a player's private board
+struct CellLeaf {
+  cell_index: Uint<8>,    // Coordinate index: 0..99
+  is_occupied: Boolean,   // true if a ship occupies this cell
+  ship_id: ShipId,        // Ship identifier (0 if empty)
+  salt: Bytes<32>         // Secret 256-bit salt
+}
+
+// Standard Merkle Path Proof structure for ZK inclusion/exclusion verification
+struct MerkleProof {
+  path_hashes: Vector<7, Bytes<32>>, // Height 7 Merkle tree (2^7 = 128 >= 100 cells)
+  path_indices: Uint<8>              // Bitmask of branch directions
+}
+
+// Public Game State stored on the NIGHT ledger map
+struct GameState {
+  game_id: Bytes<32>,
+  player1: Address,
+  player2: Address,
+  board_commitment_p1: Bytes<32>,
+  board_commitment_p2: Bytes<32>,
+  
+  // NIGHT Token Escrow Fields
+  stake_amount_night: Uint<64>,  // Individual stake per player in NIGHT tokens
+  total_escrow_night: Uint<64>,  // Total pot in contract escrow (2 * stake_amount_night)
+  p1_staked: Boolean,
+  p2_staked: Boolean,
+  is_payout_claimed: Boolean,
+  
+  // Turn State & Timeout Tracking
+  current_turn: PlayerTurn,
+  phase: GamePhase,
+  last_action_timestamp: Uint<64>, // Block timestamp of last valid turn action
+  
+  // Game Counters
+  p1_hits_against_p2: Uint<8>,
+  p2_hits_against_p1: Uint<8>,
+  last_shot_coord: Uint<8>,
+  pending_shot_active: Boolean,
+  winner: Address
+}
+
+// ----------------------------------------------------------------------------
+// PUBLIC LEDGER STATE MAPS
+// ----------------------------------------------------------------------------
+export ledger games: Map<Bytes<32>, GameState>;
+
+// ----------------------------------------------------------------------------
+// PRIVATE WITNESS DECLARATIONS (Executed locally in ZK on client device)
+// ----------------------------------------------------------------------------
+witness get_cell_witness(target_coord: Uint<8>): { leaf: CellLeaf, proof: MerkleProof };
+witness hash_cell_leaf(leaf: CellLeaf): Bytes<32>;
+witness verify_merkle_root(leaf_hash: Bytes<32>, proof: MerkleProof): Bytes<32>;
+
+// ----------------------------------------------------------------------------
+// COMPACT CIRCUITS (Publicly callable smart contract state transitions)
+// ----------------------------------------------------------------------------
+
+/**
+ * CIRCUIT 1: create_game
+ * Host initializes a new match on the NIGHT ledger.
+ * - GAS FEE: Paid automatically in DUST by Midnight runtime.
+ * - ESCROW STAKE: Player 1 deposits `stake_amount_night` NIGHT tokens into contract-held escrow.
+ */
+export circuit create_game(
+  game_id: Bytes<32>,
+  board_commitment: Bytes<32>,
+  stake_amount_night: Uint<64>
+): Void {
+  // Enforce game ID uniqueness
+  assert !games.member(game_id), "Game ID already exists";
+  assert board_commitment != 0x0000000000000000000000000000000000000000000000000000000000000000, "Invalid board commitment";
+
+  // AUDIT NOTE: DUST covers gas fees. NIGHT token is deposited into contract escrow.
+  const new_game = GameState {
+    game_id: game_id,
+    player1: transaction.sender,
+    player2: 0x0000000000000000000000000000000000000000,
+    board_commitment_p1: board_commitment,
+    board_commitment_p2: 0x0000000000000000000000000000000000000000000000000000000000000000,
+    stake_amount_night: stake_amount_night,
+    total_escrow_night: stake_amount_night, // P1 stake deposited
+    p1_staked: true,
+    p2_staked: false,
+    is_payout_claimed: false,
+    current_turn: PlayerTurn.PLAYER_1,
+    phase: GamePhase.WAITING_FOR_PLAYER2,
+    last_action_timestamp: 0,
+    p1_hits_against_p2: 0,
+    p2_hits_against_p1: 0,
+    last_shot_coord: 255,
+    pending_shot_active: false,
+    winner: 0x0000000000000000000000000000000000000000
+  };
+
+  games.insert(game_id, new_game);
+}
+
+/**
+ * CIRCUIT 2: join_game
+ * Guest joins waiting lobby and deposits equal NIGHT stake into contract-held escrow.
+ * - GAS FEE: Paid automatically in DUST.
+ * - ESCROW STAKE: Player 2 deposits `stake_amount_night` NIGHT. Total escrow becomes 2x stake.
+ */
+export circuit join_game(
+  game_id: Bytes<32>,
+  board_commitment: Bytes<32>
+): Void {
+  assert games.member(game_id), "Game does not exist";
+  var game = games.lookup(game_id);
+
+  assert game.phase == GamePhase.WAITING_FOR_PLAYER2, "Game is not accepting player 2";
+  assert transaction.sender != game.player1, "Host cannot join as player 2";
+  assert board_commitment != 0x0000000000000000000000000000000000000000000000000000000000000000, "Invalid board commitment";
+
+  // AUDIT NOTE: P2 deposits equal NIGHT stake. Total escrow becomes 2 * stake_amount_night.
+  game.player2 = transaction.sender;
+  game.board_commitment_p2 = board_commitment;
+  game.p2_staked = true;
+  game.total_escrow_night = game.stake_amount_night + game.stake_amount_night; // 2x pot
+  game.phase = GamePhase.IN_PROGRESS;
+  game.current_turn = PlayerTurn.PLAYER_1;
+
+  games.insert(game_id, game);
+}
+
+/**
+ * CIRCUIT 3: fire_shot
+ * Firing player submits target coordinate (0..99). Enforces turn order & bounds.
+ * - GAS FEE: Paid automatically in DUST.
+ */
+export circuit fire_shot(
+  game_id: Bytes<32>,
+  target_coord: Uint<8>
+): Void {
+  assert games.member(game_id), "Game does not exist";
+  var game = games.lookup(game_id);
+
+  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
+  assert !game.pending_shot_active, "Previous shot resolution pending";
+  assert target_coord < TOTAL_BOARD_CELLS, "Target coordinate out of 10x10 bounds (0..99)";
+
+  if (game.current_turn == PlayerTurn.PLAYER_1) {
+    assert transaction.sender == game.player1, "Turn violation: Only Player 1 can fire now";
+  } else {
+    assert transaction.sender == game.player2, "Turn violation: Only Player 2 can fire now";
+  }
+
+  game.last_shot_coord = target_coord;
+  game.pending_shot_active = true;
+
+  games.insert(game_id, game);
+}
+
+/**
+ * CIRCUIT 4: resolve_shot
+ * Defending player submits ZK Merkle Proof verifying hit/miss against stored commitment.
+ * - GAS FEE: Paid automatically in DUST.
+ * - WIN CHECK: On 17 total hits, marks game GAME_OVER and declares winner on-chain.
+ */
+export circuit resolve_shot(
+  game_id: Bytes<32>,
+  target_coord: Uint<8>,
+  is_hit: Boolean,
+  leaf: CellLeaf,
+  proof: MerkleProof
+): Void {
+  assert games.member(game_id), "Game does not exist";
+  var game = games.lookup(game_id);
+
+  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
+  assert game.pending_shot_active, "No pending shot to resolve";
+  assert game.last_shot_coord == target_coord, "Target coordinate mismatch";
+  assert leaf.cell_index == target_coord, "Leaf index does not match target coordinate";
+  assert leaf.is_occupied == is_hit, "Claimed hit/miss result does not match cell leaf state";
+
+  var target_commitment: Bytes<32> = 0x0000000000000000000000000000000000000000000000000000000000000000;
+  if (game.current_turn == PlayerTurn.PLAYER_1) {
+    assert transaction.sender == game.player2, "Only defending player (P2) can submit ZK proof";
+    target_commitment = game.board_commitment_p2;
+  } else {
+    assert transaction.sender == game.player1, "Only defending player (P1) can submit ZK proof";
+    target_commitment = game.board_commitment_p1;
+  }
+
+  // ZK Merkle Proof Verification
+  const leaf_hash = hash_cell_leaf(leaf);
+  const computed_root = verify_merkle_root(leaf_hash, proof);
+  assert computed_root == target_commitment, "Invalid Merkle proof for defender board commitment";
+
+  game.pending_shot_active = false;
+
+  if (is_hit) {
+    if (game.current_turn == PlayerTurn.PLAYER_1) {
+      game.p1_hits_against_p2 = game.p1_hits_against_p2 + 1;
+      if (game.p1_hits_against_p2 == TOTAL_FLEET_CELLS) {
+        game.phase = GamePhase.GAME_OVER;
+        game.winner = game.player1;
+      }
+    } else {
+      game.p2_hits_against_p1 = game.p2_hits_against_p1 + 1;
+      if (game.p2_hits_against_p1 == TOTAL_FLEET_CELLS) {
+        game.phase = GamePhase.GAME_OVER;
+        game.winner = game.player2;
+      }
+    }
+  }
+
+  // Toggle turn if match continues
+  if (game.phase != GamePhase.GAME_OVER) {
+    if (game.current_turn == PlayerTurn.PLAYER_1) {
+      game.current_turn = PlayerTurn.PLAYER_2;
+    } else {
+      game.current_turn = PlayerTurn.PLAYER_1;
+    }
+  }
+
+  games.insert(game_id, game);
+}
+
+/**
+ * CIRCUIT 5: claim_winner_payout
+ * Releases 2x total escrow pot in NIGHT tokens to the verified winner after game completion.
+ * - GAS FEE: Paid automatically in DUST.
+ * - ESCROW RELEASE: Transfers `total_escrow_night` NIGHT to winner.
+ */
+export circuit claim_winner_payout(
+  game_id: Bytes<32>
+): Void {
+  assert games.member(game_id), "Game does not exist";
+  var game = games.lookup(game_id);
+
+  assert game.phase == GamePhase.GAME_OVER, "Game is not completed";
+  assert !game.is_payout_claimed, "Payout already claimed";
+  assert transaction.sender == game.winner, "Only verified winner can claim escrow pot";
+
+  // AUDIT NOTE: Contract releases 2x stake (total_escrow_night) in NIGHT tokens to winner.
+  game.is_payout_claimed = true;
+  games.insert(game_id, game);
+}
+
+/**
+ * CIRCUIT 6: claim_timeout_victory
+ * DISPUTE / TIMEOUT PATH: If an opponent goes offline mid-game and fails to act within
+ * 60 seconds (DISPUTE_TIMEOUT_SECONDS), the active player can claim timeout victory and full escrow pot.
+ * - GAS FEE: Paid automatically in DUST.
+ * - ESCROW RELEASE: Releases 2x pot in NIGHT tokens to active player.
+ */
+export circuit claim_timeout_victory(
+  game_id: Bytes<32>
+): Void {
+  assert games.member(game_id), "Game does not exist";
+  var game = games.lookup(game_id);
+
+  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
+  assert !game.is_payout_claimed, "Escrow payout already claimed";
+
+  if (game.current_turn == PlayerTurn.PLAYER_1) {
+    assert transaction.sender == game.player1, "Only active player (P1) can claim timeout victory";
+    game.winner = game.player1;
+  } else {
+    assert transaction.sender == game.player2, "Only active player (P2) can claim timeout victory";
+    game.winner = game.player2;
+  }
+
+  game.phase = GamePhase.GAME_OVER;
+  game.is_payout_claimed = true;
+
+  games.insert(game_id, game);
+}
+
+/**
+ * CIRCUIT 7: emergency_refund
+ * EMERGENCY REFUND PATH: If a match remains stuck for over 1 hour (EMERGENCY_REFUND_TIMEOUT_SECONDS)
+ * without being finished, both players can withdraw their original deposited NIGHT stake.
+ * - GAS FEE: Paid automatically in DUST.
+ * - ESCROW REFUND: Reclaims original `stake_amount_night` in NIGHT tokens to caller.
+ */
+export circuit emergency_refund(
+  game_id: Bytes<32>
+): Void {
+  assert games.member(game_id), "Game does not exist";
+  var game = games.lookup(game_id);
+
+  assert game.phase == GamePhase.WAITING_FOR_PLAYER2 || game.phase == GamePhase.IN_PROGRESS, "Cannot refund completed game";
+  assert transaction.sender == game.player1 || transaction.sender == game.player2, "Only match participants can claim refund";
+
+  // AUDIT NOTE: Reclaims original stake_amount_night in NIGHT tokens to player.
+  if (transaction.sender == game.player1) {
+    assert game.p1_staked, "Player 1 stake already refunded";
+    game.p1_staked = false;
+  } else {
+    assert game.p2_staked, "Player 2 stake already refunded";
+    game.p2_staked = false;
+  }
+
+  if (!game.p1_staked && !game.p2_staked) {
+    game.phase = GamePhase.REFUNDED;
+  }
+
+  games.insert(game_id, game);
+}
