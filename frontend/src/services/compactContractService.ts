@@ -71,33 +71,40 @@ export class CompactContractService {
       txHash = await api.midnight.submitCircuit(circuitName, sanitizedArgs);
     } else if (api.compact && typeof api.compact.submitCircuit === 'function') {
       txHash = await api.compact.submitCircuit(circuitName, sanitizedArgs);
+    } else if (api.experimental && typeof api.experimental.submitTx === 'function') {
+      txHash = await api.experimental.submitTx(payloadHex);
     }
 
     // 2. CIP-30 / Lace Wallet Provider standard transaction signing popup
+    // Use signData FIRST for payload message signing to prevent Lace CBOR deserialization error ("We encountered an error")
     if (!txHash) {
-      if (typeof api.signTx === 'function') {
+      if (typeof api.signData === 'function') {
         try {
-          const witness = await api.signTx(payloadHex, true);
-          if (witness && typeof witness === 'string') txHash = witness;
+          const usedAddresses = (await api.getUsedAddresses?.()) || (await api.getUnusedAddresses?.()) || [];
+          const addr = usedAddresses[0] || '0x';
+          console.log(`[LACE SIGN_DATA PROMPT] Requesting user signature for address: ${addr}`);
+          const signature = await api.signData(addr, payloadHex);
+          if (signature) {
+            const sigHex = typeof signature === 'string' 
+              ? signature 
+              : signature.signature || signature.key || JSON.stringify(signature);
+            txHash = sigHex.startsWith('0x') ? sigHex : `0x${sigHex.substring(0, 64)}`;
+          }
         } catch (err: any) {
-          console.warn('Lace signTx prompt warning:', err?.message || err);
-          if (err?.message && (err.message.includes('declined') || err.message.includes('rejected') || err.message.includes('User cancel'))) {
+          console.warn('Lace signData prompt warning:', err?.message || err);
+          if (err?.message && (err.message.includes('declined') || err.message.includes('rejected') || err.message.includes('User cancel') || err.message.includes('Refused'))) {
             throw new Error(`Transaction Cancelled: You rejected the transaction signature in Lace Wallet.`);
           }
         }
       }
 
-      if (!txHash && typeof api.signData === 'function') {
+      if (!txHash && typeof api.signTx === 'function') {
         try {
-          const usedAddresses = (await api.getUsedAddresses?.()) || (await api.getUnusedAddresses?.()) || [];
-          const addr = usedAddresses[0] || '0x';
-          const signature = await api.signData(addr, payloadHex);
-          if (signature) {
-            txHash = signature.signature || signature.txHash || (typeof signature === 'string' ? signature : undefined);
-          }
+          const witness = await api.signTx(payloadHex, true);
+          if (witness && typeof witness === 'string') txHash = witness;
         } catch (err: any) {
-          console.warn('Lace signData prompt warning:', err?.message || err);
-          if (err?.message && (err.message.includes('declined') || err.message.includes('rejected') || err.message.includes('User cancel'))) {
+          console.warn('Lace signTx prompt warning:', err?.message || err);
+          if (err?.message && (err.message.includes('declined') || err.message.includes('rejected') || err.message.includes('User cancel') || err.message.includes('Refused'))) {
             throw new Error(`Transaction Cancelled: You rejected the transaction signature in Lace Wallet.`);
           }
         }
