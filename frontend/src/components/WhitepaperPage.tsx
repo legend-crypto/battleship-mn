@@ -230,7 +230,7 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
 
           <div className="pt-2">
             <a
-              href="https://explorer.midnight.network"
+              href={MIDNIGHT_TESTNET.blockExplorer}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 underline hover:text-emerald-300"

@@ -1,132 +1,81 @@
 # ⚓ Battleship MN
 
-**Decentralized Zero-Knowledge Naval Warfare — Built on Midnight Network**
+**Decentralized Zero-Knowledge Naval Strategy & Token Staking Protocol on Midnight Network**
 
-A classic 10x10 Battleship game reimagined with real-time multiplayer, a
-tactical ZK AI opponent, and on-chain privacy-preserving staking. Players wager tokens before a
-match, battle in real time with ZK-verified board commitments, and the winner claims the pooled stake
-directly from a Compact smart contract.
+[![Midnight Network](https://img.shields.io/badge/Chain-Midnight_Network-blueviolet?style=for-the-badge)](https://preview.midnightexplorer.com)
+[![Compact Language](https://img.shields.io/badge/Smart_Contract-Compact_v0.14-emerald?style=for-the-badge)](https://preview.midnightexplorer.com/contract/0x0d8e9c14664f3757558a5fa5e3304f5c3807f7a6)
+[![Vercel Deployment](https://img.shields.io/badge/Frontend-Vercel_Deployed-black?style=for-the-badge)](https://vercel.com)
+[![Docker Proof Server](https://img.shields.io/badge/Docker-Proof_Server_6300-blue?style=for-the-badge)](SETUP.md)
 
----
-
-## 🎮 Features
-
-- **Local ZK AI Mode** — play instantly against a computer opponent, fully
-  offline, no wallet required. The AI uses a checkerboard-parity opening
-  search followed by adjacent-cell hunt/target logic once it lands a hit.
-- **Real-Time Multiplayer** — create or join a match, place your fleet, and
-  battle another player live over WebSockets with ZK hit/miss proof resolution. Reconnect support for
-  page refreshes mid-match.
-- **On-Chain Staking (Midnight Network)** — before a multiplayer match starts, both
-  players stake an equal amount into a Compact escrow smart contract. The
-  winner claims the pooled stake upon verified victory.
-- **Live Combat Feed** — a real-time log of every shot, hit, and miss for
-  both sides, plus running accuracy stats per player.
-- **End-of-Match ZK Reveal** — opponent ship positions are revealed only once
-  the match concludes, alongside the win/loss result and final accuracy.
+A classic 10x10 Battleship strategy game reimagined with real-time multiplayer, a tactical ZK AI opponent, and privacy-preserving on-chain token wagers powered by Midnight Compact smart contracts (`BattleshipStaking.compact`).
 
 ---
 
-## 🏗️ Tech Stack
+## 📖 Quick Links
 
-| Layer | Technology |
-|---|---|
-| Frontend | React + TypeScript (Vite), Tailwind CSS |
-| Multiplayer server | Node.js + TypeScript, Socket.io (real-time match sync) |
-| Shared game engine | Framework-agnostic TypeScript (`/shared`) — used by both frontend AI mode and backend multiplayer authority |
-| Wallet / chain integration | Midnight Wallet SDK (Lace wallet) |
-| Smart contracts | Compact (Midnight ZK Smart Contracts) |
-| Chain | Midnight Network (Dual-Ledger: Public NIGHT + Private ZK State) |
+- [🚀 Quick Setup Guide (`SETUP.md`)](SETUP.md) — Step-by-step instructions for Docker Proof Server, node environment, & local running.
+- [📜 Technical Whitepaper (`WHITEPAPER.md`)](WHITEPAPER.md) — Comprehensive protocol architecture, Merkle tree math, and Compact circuit specifications.
+- [🌐 Midnight Block Explorer](https://preview.midnightexplorer.com) — View live testnet blocks, extrinsics, and transaction hashes.
 
-### Midnight Network details
+---
 
-| Network | Ledger Model | Explorer |
+## 🎮 Key Features
+
+- **On-Chain Token Escrow Staking** — Players stake equal NIGHT wagers before a match. The winner claims 100% of the $2\times$ pooled pot directly from contract escrow upon verified victory.
+- **Zero-Knowledge Board Commitments** — Fleet coordinates are hashed into a 100-cell Merkle tree root (`board_commitment`). Ship locations remain 100% private and invisible to block explorers and opponents.
+- **ZK Hit/Miss Proof Resolution** — Shots fired generate client-side ZK inclusion/exclusion path proofs verifying outcomes without revealing un-targeted grid positions.
+- **Local ZK AI Mode** — Play instantly offline against a tactical computer opponent using checkerboard parity opening searches and cardinal pursuit logic. No wallet or backend required.
+- **Real-Time Multiplayer** — Match creation via 6-character match codes over WebSockets with automatic reconnect support.
+- **Dispute Timeout & Emergency Safeguards** — Enforces a 60-second inactivity timeout (`claim_timeout_victory`) for AFK opponents, plus a 1-hour emergency refund window (`emergency_refund`).
+
+---
+
+## 🏗️ Architecture & Tech Stack
+
+| Layer | Technology | Description |
 |---|---|---|
-| **Midnight Network** | Dual-Ledger (Public NIGHT + Private ZK State) | [explorer.midnight.network](https://explorer.midnight.network) |
+| **Frontend** | React 18, TypeScript (Vite), Tailwind CSS | Tactical command console, Lace Wallet connector, interactive radar grids. |
+| **ZK Smart Contracts** | Compact Language (`v0.14.0+`) | Contract-held escrow wagers, turn state transitions, and ZK Merkle proof verification. |
+| **Local ZK Prover** | Docker (`midnightnetwork/proof-server:latest`) | Local Actix Web proof server listening on `http://localhost:6300`. |
+| **Shared Engine** | Framework-agnostic TypeScript (`/shared`) | Core 10x10 Battleship rules, Merkle tree constructor, and fog-of-war AI. |
+| **Backend & Sync** | Node.js, Socket.io, Convex | Real-time match synchronization, lobby room management, and state persistence. |
+| **Chain & Wallet** | Midnight Network, Lace Wallet Extension | Dual-Ledger architecture (Public NIGHT ledger + Private ZK State). |
 
 ---
 
-## 📁 Project Structure
+## ⚡ Quick Start
 
-```
-battleship-mn/
-├── frontend/          # React app — local ZK AI mode, multiplayer lobby, wallet UI
-├── backend/           # Socket.io server — authoritative multiplayer match state
-├── contracts/         # Compact staking contract + test suite
-├── shared/            # Shared TypeScript game engine + types (board, ship, move, match)
-│   ├── src/
-│   │   ├── engine.ts  # Board/ship/move resolution logic
-│   │   ├── ai.ts      # Local AI targeting logic (hunt/target strategy)
-│   │   └── types.ts
-└── README.md
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js (v18+)
-- npm or pnpm
-- Midnight compatible wallet (e.g. Lace Wallet)
-
-### Installation
-
+### 1. Start Midnight Proof Server (Docker)
 ```bash
-git clone <your-repo-url>
-cd battleship-mn
+docker run -d --name midnight-proof-server -p 6300:6300 midnightnetwork/proof-server:latest
+```
+
+### 2. Install Dependencies & Build Shared Engine
+```bash
 npm install
-```
-
-### Run locally
-
-```bash
-# Start the shared engine build
 npm run build --workspace=shared
-
-# Start the multiplayer backend
-npm run dev --workspace=backend
-
-# Start the frontend
-npm run dev --workspace=frontend
 ```
 
-Local AI mode works immediately with no backend or wallet connection.
-Multiplayer mode requires the backend running; staking requires a wallet
-connected to Midnight Network.
+### 3. Launch Development Server
+```bash
+npm run dev
+```
+*Open [http://localhost:5173](http://localhost:5173) in your browser with Lace Wallet extension connected.*
+
+For complete developer instructions, see [**`SETUP.md`**](SETUP.md).
 
 ---
 
-## 🎲 Game Modes
+## 📜 Deployed Smart Contract Details
 
-### Play vs ZK AI (local)
-Fully client-side. Place your fleet (or auto-shuffle), then alternate turns
-with the AI. No network calls, no wallet required.
-
-### Multiplayer
-1. Create or join a match via a match code.
-2. Both players commit their fleets to ZK board hashes.
-3. *(If staking)* both players stake equal tokens into the Compact contract escrow.
-4. Turns alternate in real time with ZK-proof hit/miss resolution.
-5. On game over, ship positions are revealed, the winner is shown
-   alongside final accuracy for both sides, and the winner can claim the
-   staked pool.
-
----
-
-## 📜 Staking Contract
-
-The `BattleshipStaking.compact` contract handles escrow staking and ZK state verification:
-
-1. `createMatch(matchId, stakeAmount)` — proposer stakes into escrow.
-2. `joinMatch(matchId)` — opponent matches the stake.
-3. Winner is verified via ZK-SNARK hit/miss proof state transitions.
-4. `claim(matchId, proof)` — winner withdraws the pooled stake.
-5. Refund path for matches that never start or time out.
+- **Contract Spec**: `BattleshipStaking.compact`
+- **Configured Address**: `0x0d8e9c14664f3757558a5fa5e3304f5c3807f7a6`
+- **Network**: Midnight Network (Preview Testnet)
+- **RPC Endpoint**: `https://rpc.preview.midnight.network`
+- **Explorer**: [https://preview.midnightexplorer.com](https://preview.midnightexplorer.com)
 
 ---
 
 ## 📄 License
 
-MIT
+MIT © 2026 Battleship MN Team. Built for Midnight Network.
