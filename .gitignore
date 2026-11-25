@@ -9,6 +9,7 @@ out/
 artifacts/
 cache/
 typechain-types/
+*.tsbuildinfo
 
 # Environment files & secrets
 .env
@@ -25,3 +26,4 @@ Thumbs.db
 .agents
 .claude
 
+wave2.md

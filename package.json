@@ -11,13 +11,12 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=frontend",
-    "dev:backend": "npm run dev --workspace=backend",
-    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev\"",
-    "build": "npm run build --workspaces",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=shared && npm run build --workspace=frontend",
+    "typecheck": "npx tsc --noEmit -p frontend/tsconfig.json",
     "test": "npm run test --workspace=shared",
     "test:engine": "npm run test --workspace=shared",
-    "lint": "echo 'Linting placeholder'",
-    "dev:frontend": "npm run dev --workspace=frontend"
+    "lint": "echo 'Linting placeholder'"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

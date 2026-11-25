@@ -90,15 +90,15 @@ VITE_MIDNIGHT_TESTNET_RPC=https://rpc.preview.midnight.network
 VITE_MIDNIGHT_EXPLORER_URL=https://preview.midnightexplorer.com
 VITE_MIDNIGHT_FAUCET_URL=https://faucet.preview.midnight.network
 
-# Deployed Midnight Compact Contract Address
-VITE_MIDNIGHT_CONTRACT_ADDRESS=0x0d8e9c14664f3757558a5fa5e3304f5c3807f7a6
+# Deployed Midnight Compact Contract Address (populated after deploying compiled contract)
+VITE_MIDNIGHT_CONTRACT_ADDRESS=
 
 # Convex Backend Realtime Sync
 VITE_CONVEX_URL=https://fine-rooster-248.convex.cloud
 
-# Optional Wallet Deployment Keys
-MIDNIGHT_COIN_KEY="0c962161fd8aaedee1fdf223c1c84763a094a112bed378d46b4f2be028ced8f8"
-MIDNIGHT_ENCRYPTION_KEY="ee6a7e258b5b7a4986b19d1dedd422ee8fe5ee3b5ebf44e986ac7c6bac14ea5d"
+# Optional Wallet Deployment Keys (NEVER commit real keys!)
+MIDNIGHT_COIN_KEY="<your-midnight-coin-key>"
+MIDNIGHT_ENCRYPTION_KEY="<your-midnight-encryption-key>"
 ```
 
 ---

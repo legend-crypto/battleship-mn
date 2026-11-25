@@ -6,7 +6,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "echo 'Shared engine ready'",
+    "build": "npx tsc -b",
     "clean": "echo 'Cleaned'",
     "test": "npx vitest run"
   },
