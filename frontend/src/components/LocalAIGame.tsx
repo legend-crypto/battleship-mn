@@ -108,21 +108,26 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
 
   const handleSelectStakedMode = () => {
     if (!isConnected || !address) {
-      alert('Please connect your Web3 wallet in the top header to play Staked Midnight ZK AI Battle.');
+      alert('Please connect your Lace Wallet in the top header to play Staked Midnight ZK AI Battle.');
       return;
     }
     const randomMatchId = `0xmn_ai_${Date.now().toString(16)}_${Math.random().toString(36).substring(2, 10)}`;
     setMatchIdBytes32(randomMatchId);
     setAiMode('STAKED');
-    setPhase('STAKING');
+    setPhase('PLACEMENT');
+    addLog('PLAYER', 'Staked Midnight AI Battle selected. Deploy your fleet to generate your Merkle root before staking.', 'info');
   };
 
-  // Called when Player 1 deposits stake on-chain
+  // Called when Player 1 deposits stake on-chain after placing fleet
   const handleStakeConfirmed = async (txHash: string) => {
     setHasStaked(true);
     setStakeTxHash(txHash);
+    const randomAiBoard = generateRandomBoard();
+    setAiBoard(randomAiBoard);
+    setPhase('PLAYING');
+    setCurrentTurn('PLAYER');
+    setShowStatsModal(false);
     addLog('PLAYER', `Stake deposited into Midnight Compact Escrow! (TxHash: ${txHash.slice(0, 10)}...)`, 'info');
-    setPhase('PLACEMENT');
   };
 
   const selectNextAvailableShip = (board: BoardState) => {
@@ -159,15 +164,21 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
     setPlayerMerkleTree(merkleResult);
     setBoardCommitment(merkleResult.root);
 
-    const gameId = matchIdBytes32 || `0xmn_ai_${Date.now().toString(16)}`;
-    await CompactContractService.createGame(gameId, merkleResult.root);
+    if (aiMode === 'STAKED' && !hasStaked) {
+      setPhase('STAKING');
+      return;
+    }
 
     const randomAiBoard = generateRandomBoard();
     setAiBoard(randomAiBoard);
     setPhase('PLAYING');
     setCurrentTurn('PLAYER');
     setShowStatsModal(false);
-    addLog('PLAYER', `Battle initiated! Private board Merkle Commitment committed to Midnight NIGHT Ledger (${merkleResult.root.substring(0, 16)}...)`, 'info');
+    addLog(
+      'PLAYER',
+      `Practice battle initiated! Local 100-cell Merkle commitment: ${merkleResult.root.substring(0, 16)}...`,
+      'info'
+    );
   };
 
   const handleFireShot = async (pos: Position) => {
@@ -186,21 +197,22 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
 
     setPlayerShots((prev) => prev + 1);
 
-    const targetIndex = pos.y * BOARD_SIZE + pos.x;
-    const gameId = matchIdBytes32 || `0xmn_ai_${Date.now().toString(16)}`;
+    if (aiMode === 'STAKED') {
+      const targetIndex = pos.y * BOARD_SIZE + pos.x;
+      const gameId = matchIdBytes32 || `0xmn_ai_${Date.now().toString(16)}`;
+      await CompactContractService.fireShot(gameId, targetIndex);
+    }
 
-    // Call fire_shot Compact contract circuit via Lace wallet connector
-    await CompactContractService.fireShot(gameId, targetIndex);
-
+    const txSuffix = aiMode === 'STAKED' ? ' (On-chain fire_shot)' : '';
     if (result.hit) {
       setPlayerHits((prev) => prev + 1);
       if (result.type === ShotResultType.SUNK) {
-        addLog('PLAYER', `You fired at ${coordStr} — SUNK ${result.sunkShipType}! (Circuit fire_shot verified on-chain)`, 'sunk');
+        addLog('PLAYER', `You fired at ${coordStr} — SUNK ${result.sunkShipType}!${txSuffix}`, 'sunk');
       } else {
-        addLog('PLAYER', `You fired at ${coordStr} — HIT (Circuit fire_shot verified on-chain)`, 'hit');
+        addLog('PLAYER', `You fired at ${coordStr} — HIT${txSuffix}`, 'hit');
       }
     } else {
-      addLog('PLAYER', `You fired at ${coordStr} — MISS (Circuit fire_shot verified on-chain)`, 'miss');
+      addLog('PLAYER', `You fired at ${coordStr} — MISS${txSuffix}`, 'miss');
     }
 
     if (result.gameOver) {
@@ -264,20 +276,16 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
   }, [phase, currentTurn, playerBoard, playerOceanTracking, aiState]);
 
   const handleClaimWinnerPayout = async () => {
-    if (!matchIdBytes32) return;
+    if (!matchIdBytes32 || aiMode !== 'STAKED') return;
     setIsClaimPending(true);
     try {
-      // TODO: Compact contract call for BattleshipStaking.compact payout claim
-      // Execution circuit: BattleshipStaking.compact -> claim_winner_payout
-      console.log(`[Compact Contract Call Placeholder] Claiming victory payout for match ${matchIdBytes32}`);
-      
-      setTimeout(() => {
-        setPayoutTxHash(`0xmn_claim_${Date.now().toString(16)}`);
-        setIsClaimPending(false);
-        setIsClaimSuccess(true);
-      }, 1000);
+      const hash = await CompactContractService.claimWinnerPayout(matchIdBytes32);
+      setPayoutTxHash(hash as `0x${string}`);
+      setIsClaimPending(false);
+      setIsClaimSuccess(true);
     } catch (err: any) {
       console.error('Claim Error:', err);
+      addLog('PLAYER', err?.message || 'Winner payout claim failed.', 'info');
       setIsClaimPending(false);
     }
   };
@@ -494,10 +502,11 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
       ) : phase === 'STAKING' ? (
         <div className="flex flex-col items-center justify-center py-8 w-full">
           <StakingPanel
-            matchIdBytes32={matchIdBytes32}
+            matchIdBytes32={matchIdBytes32 || ''}
             stakeAmountEth={stakeAmountEth}
             role="host"
             hasStaked={hasStaked}
+            boardCommitment={boardCommitment || undefined}
             onStakeConfirmed={handleStakeConfirmed}
           />
         </div>
@@ -594,7 +603,7 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
 
           <div className="col-span-12 lg:col-span-3">
             <MatchInfoPanel
-              playerAddress={address}
+              playerAddress={address || undefined}
               opponentName="MIDNIGHT ZK AI AGENT (#MN-9021)"
               isMyTurn={currentTurn === 'PLAYER'}
               playerShipsLeft={playerShipsAlive}

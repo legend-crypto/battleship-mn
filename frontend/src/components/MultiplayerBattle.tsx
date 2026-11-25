@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   BOARD_SIZE,
   BoardState,
@@ -8,24 +8,47 @@ import {
   Position,
   SHIP_SIZES,
   ShipType,
-  SocketEvent,
+  ShotResultType,
   createEmptyBoard,
   isValidPlacement,
   placeShip,
   generateRandomBoard,
   processShot
 } from '@battleship/shared';
-import { socketService } from '../services/socket';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { StakingPanel } from './StakingPanel';
 import { BoardGrid } from './BoardGrid';
 import { FleetPanel } from './FleetPanel';
 import { MatchInfoPanel } from './MatchInfoPanel';
 import { ShipPlacementPanel } from './ShipPlacementPanel';
+import { ProofGenerationOverlay } from './ProofGenerationOverlay';
 import { useMidnightWallet } from '../context/MidnightWalletContext';
 import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
-import { buildBoardMerkleTree, generateCellMerkleProof } from '../utils/merkle';
+import {
+  BoardMerkleTreeResult,
+  buildBoardMerkleTree,
+  generateCellMerkleProof,
+  verifyCellMerkleProof
+} from '../utils/merkle';
 import { CompactContractService } from '../services/compactContractService';
-import { ArrowLeft, RefreshCw, Trophy, Flame, Shield, Coins, ExternalLink, CheckCircle2, Eye, BarChart3, Info, BookOpen, MessageSquare, Settings, Target, Copy, Check, Play, Users, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  Trophy,
+  Flame,
+  Shield,
+  Coins,
+  ExternalLink,
+  CheckCircle2,
+  Eye,
+  BarChart3,
+  Target,
+  Copy,
+  Check,
+  Users,
+  Clock,
+  AlertCircle
+} from 'lucide-react';
 
 interface MultiplayerBattleProps {
   matchData: {
@@ -44,148 +67,190 @@ interface MultiplayerBattleProps {
 
 export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData, onExit }) => {
   const { address } = useMidnightWallet();
-  const [phase, setPhase] = useState<'STAKING' | 'PLACEMENT' | 'PLAYING' | 'FINISHED'>('STAKING');
-  const [showStatsModal, setShowStatsModal] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const isFreeMatch = Number(matchData.stakeAmountEth) === 0;
+  const storageKey = `mn_private_${matchData.matchIdBytes32}_${matchData.role}`;
 
-  // Staking state
-  const [hasStaked, setHasStaked] = useState(false);
-  const [isMyReady, setIsMyReady] = useState(false);
-  const [merkleTree, setMerkleTree] = useState<any>(null);
-  const [boardCommitment, setBoardCommitment] = useState<string | null>(null);
-  const [stakeTxHash, setStakeTxHash] = useState<string | undefined>();
+  // Subscribe to real-time Convex match document
+  const liveMatch = useQuery(api.matches.getMatchByBytes32, {
+    matchIdBytes32: matchData.matchIdBytes32
+  });
 
-  // Winner Claim State
-  const [payoutTxHash, setPayoutTxHash] = useState<`0x${string}` | undefined>();
-  const [payoutSignature, setPayoutSignature] = useState<string | undefined>();
-  const [winnerAddress, setWinnerAddress] = useState<string | undefined>();
-  const [totalPayoutEth, setTotalPayoutEth] = useState<string>('0.2');
+  const confirmStakeMutation = useMutation(api.matches.confirmStake);
+  const submitCommitmentMutation = useMutation(api.matches.submitCommitment);
+  const fireShotMutation = useMutation(api.matches.fireShot);
+  const resolveShotMutation = useMutation(api.matches.resolveShot);
+  const claimTimeoutMutation = useMutation(api.matches.claimTimeoutVictory);
+  const recordPayoutMutation = useMutation(api.matches.recordPayout);
 
-  // Boards & Grids
-  const [myBoard, setMyBoard] = useState<BoardState>(createEmptyBoard());
-  const [opponentBoard, setOpponentBoard] = useState<BoardState | null>(null);
-  const [enemyOceanTracking, setEnemyOceanTracking] = useState<CellStatus[][]>(() =>
-    Array.from({ length: BOARD_SIZE }, () => Array.from({ length: BOARD_SIZE }, () => CellStatus.EMPTY))
+  // Private local board & Merkle tree (never uploaded to Convex)
+  const [myBoard, setMyBoard] = useState<BoardState>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return JSON.parse(saved).board;
+    } catch {
+      // ignore storage errors
+    }
+    return createEmptyBoard();
+  });
+  const [merkleTree, setMerkleTree] = useState<BoardMerkleTreeResult | null>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return JSON.parse(saved).merkleTree;
+    } catch {
+      // ignore storage errors
+    }
+    return null;
+  });
+
+  const [selectedShipType, setSelectedShipType] = useState<ShipType | null>(() =>
+    myBoard.ships.length === FLEET_SHIPS.length ? null : FLEET_SHIPS[0]
   );
-
-  // Turn & Connection State
-  const [currentTurn, setCurrentTurn] = useState<string>('');
-  const [opponentConnected, setOpponentConnected] = useState(true);
-  const [winnerId, setWinnerId] = useState<string | null>(null);
-
-  // Placement controls
-  const [selectedShipType, setSelectedShipType] = useState<ShipType | null>(FLEET_SHIPS[0]);
   const [orientation, setOrientation] = useState<Orientation>('horizontal');
   const [hoverPos, setHoverPos] = useState<Position | null>(null);
 
-  // Logs & Stats
-  const [logs, setLogs] = useState<any[]>([]);
-  const [myShots, setMyShots] = useState(0);
-  const [myHits, setMyHits] = useState(0);
-  const [oppShots, setOppShots] = useState(0);
-  const [oppHits, setOppHits] = useState(0);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isFiring, setIsFiring] = useState(false);
 
-  const socket = socketService.getSocket();
-  const placedShipTypes = myBoard.ships.map((s) => s.type);
-  const isMyTurn = currentTurn === matchData.playerId;
+  // Proof overlay state when defending incoming shot
+  const [proofStep, setProofStep] = useState<'WITNESS' | 'SNARK_PROOF' | 'VERIFY_ROOT' | 'COMPLETE' | null>(null);
+  const resolvingShotKeyRef = useRef<string | null>(null);
 
+  // Winner payout state
   const [isClaimPending, setIsClaimPending] = useState(false);
-  const [isClaimSuccess, setIsClaimSuccess] = useState(false);
+  const [payoutTxHash, setPayoutTxHash] = useState<string | undefined>();
 
-  const addLog = (sender: 'PLAYER' | 'AI', message: string, type: 'hit' | 'miss' | 'sunk' | 'info') => {
-    const timestamp = new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' });
-    setLogs((prev) => [
-      { id: `${Date.now()}-${Math.random()}`, sender, message, timestamp, type },
-      ...prev
-    ]);
-  };
+  // Dispute 60s countdown tick
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Persist local private board + Merkle salts
+  useEffect(() => {
+    if (merkleTree) {
+      localStorage.setItem(storageKey, JSON.stringify({ board: myBoard, merkleTree }));
+    }
+  }, [myBoard, merkleTree, storageKey]);
+
+  const placedShipTypes = myBoard.ships.map((s) => s.type);
+  const boardCommitment = merkleTree?.root;
+
+  const isHost = matchData.role === 'host';
+  const myStaked = isFreeMatch ? true : isHost ? !!liveMatch?.hostStaked : !!liveMatch?.guestStaked;
+  const oppStaked = isFreeMatch ? true : isHost ? !!liveMatch?.guestStaked : !!liveMatch?.hostStaked;
+  const myCommitted = isHost ? !!liveMatch?.hostReady : !!liveMatch?.guestReady;
+  const oppCommitted = isHost ? !!liveMatch?.guestReady : !!liveMatch?.hostReady;
+
+  const phase: 'PLACEMENT' | 'STAKING' | 'PLAYING' | 'FINISHED' = useMemo(() => {
+    if (liveMatch?.status === 'FINISHED') return 'FINISHED';
+    if (liveMatch?.status === 'PLAYING') return 'PLAYING';
+    if (!myCommitted) return 'PLACEMENT';
+    if (!isFreeMatch && !myStaked) return 'STAKING';
+    return 'PLACEMENT';
+  }, [liveMatch?.status, myCommitted, isFreeMatch, myStaked]);
 
   useEffect(() => {
-    localStorage.setItem(`token_${matchData.matchId}`, matchData.playerToken);
-    localStorage.setItem(`pid_${matchData.matchId}`, matchData.playerId);
+    if (liveMatch?.status === 'FINISHED') {
+      setShowStatsModal(true);
+    }
+  }, [liveMatch?.status]);
 
-    if (address && socket && socket.connected) {
-      socket.emit(SocketEvent.REGISTER_WALLET, {
-        matchId: matchData.matchId,
-        playerToken: matchData.playerToken,
-        walletAddress: address
-      });
+  // Derive enemy tracking grid, shots, hits, and logs from Convex shots array
+  const { enemyOceanTracking, myShots, myHits, oppShots, oppHits } = useMemo(() => {
+    const tracking: CellStatus[][] = Array.from({ length: BOARD_SIZE }, () =>
+      Array.from({ length: BOARD_SIZE }, () => CellStatus.EMPTY)
+    );
+    let mShots = 0;
+    let mHits = 0;
+    let oShots = 0;
+    let oHits = 0;
+
+    for (const s of liveMatch?.shots || []) {
+      if (s.shooter === matchData.role) {
+        mShots += 1;
+        if (s.hit) mHits += 1;
+        tracking[s.y][s.x] = s.hit ? CellStatus.HIT : CellStatus.MISS;
+      } else {
+        oShots += 1;
+        if (s.hit) oHits += 1;
+      }
     }
 
-    if (socket && socket.connected) {
-      socket.on(SocketEvent.STAKING_COMPLETED, () => {
-        setPhase('PLACEMENT');
-        addLog('PLAYER', 'Midnight Escrow deposits confirmed! Deploy your fleet.', 'info');
-      });
+    return {
+      enemyOceanTracking: tracking,
+      myShots: mShots,
+      myHits: mHits,
+      oppShots: oShots,
+      oppHits: oHits
+    };
+  }, [liveMatch?.shots, matchData.role]);
 
-      socket.on(SocketEvent.PLAYER_READY, (data: { p1Ready: boolean; p2Ready: boolean }) => {
-        const myReadyState = matchData.role === 'host' ? data.p1Ready : data.p2Ready;
-        setIsMyReady(myReadyState);
-      });
+  // Automatically defend & submit ZK Merkle proof when opponent fires a shot
+  useEffect(() => {
+    const pending = liveMatch?.pendingShot;
+    if (!pending || pending.shooter === matchData.role || !merkleTree) return;
 
-      socket.on(SocketEvent.GAME_START, (data: { matchId: string; currentTurn: string }) => {
-        setPhase('PLAYING');
-        setCurrentTurn(data.currentTurn);
-        addLog('PLAYER', 'Game started! Alternate turns to target enemy ocean.', 'info');
-      });
+    const shotKey = `${pending.shooter}:${pending.x}:${pending.y}:${pending.firedAt}`;
+    if (resolvingShotKeyRef.current === shotKey) return;
+    resolvingShotKeyRef.current = shotKey;
 
-      socket.on(SocketEvent.SHOT_RESOLVED, (data: any) => {
-        setCurrentTurn(data.currentTurn);
-        const colLabel = String.fromCharCode(65 + data.pos.x);
-        const coordStr = `${colLabel}${data.pos.y + 1}`;
-        const isMeShooter = data.shooterId === matchData.playerId;
+    const resolveIncoming = async () => {
+      try {
+        setActionError(null);
+        setProofStep('WITNESS');
 
-        if (isMeShooter) {
-          setMyShots((prev) => prev + 1);
-          const newTracking = enemyOceanTracking.map((row) => [...row]);
-          newTracking[data.pos.y][data.pos.x] = data.hit ? CellStatus.HIT : CellStatus.MISS;
-          setEnemyOceanTracking(newTracking);
+        const cellIndex = pending.y * BOARD_SIZE + pending.x;
+        const leaf = merkleTree.leaves[cellIndex];
+        const proof = generateCellMerkleProof(cellIndex, merkleTree.treeLevels);
 
-          if (data.hit) {
-            setMyHits((prev) => prev + 1);
-            if (data.sunkShipType) {
-              addLog('PLAYER', `You fired at ${coordStr} — SUNK ${data.sunkShipType}!`, 'sunk');
-            } else {
-              addLog('PLAYER', `You fired at ${coordStr} — HIT`, 'hit');
-            }
-          } else {
-            addLog('PLAYER', `You fired at ${coordStr} — MISS`, 'miss');
-          }
-        } else {
-          setOppShots((prev) => prev + 1);
-          setMyBoard((prevBoard) => {
-            const { updatedBoard } = processShot(prevBoard, data.pos);
-            return updatedBoard;
-          });
-
-          if (data.hit) {
-            setOppHits((prev) => prev + 1);
-            if (data.sunkShipType) {
-              addLog('AI', `Opponent fired at ${coordStr} — SUNK ${data.sunkShipType}!`, 'sunk');
-            } else {
-              addLog('AI', `Opponent fired at ${coordStr} — HIT`, 'hit');
-            }
-          } else {
-            addLog('AI', `Opponent fired at ${coordStr} — MISS`, 'miss');
-          }
+        setProofStep('SNARK_PROOF');
+        const proofVerified = await verifyCellMerkleProof(leaf, proof, merkleTree.root);
+        if (!proofVerified) {
+          throw new Error('Local Merkle proof verification failed for defending cell');
         }
-      });
 
-      return () => {
-        socket.off(SocketEvent.STAKING_COMPLETED);
-        socket.off(SocketEvent.PLAYER_READY);
-        socket.off(SocketEvent.GAME_START);
-        socket.off(SocketEvent.SHOT_RESOLVED);
-      };
-    }
-  }, [matchData, address, socket]);
+        const { updatedBoard, result } = processShot(myBoard, { x: pending.x, y: pending.y });
+        setMyBoard(updatedBoard);
 
-  const handleStakeConfirmed = (txHash: string) => {
-    setHasStaked(true);
-    setStakeTxHash(txHash);
-    addLog('PLAYER', `Stake deposited into Midnight Compact Escrow! (TxHash: ${txHash.slice(0, 10)}...)`, 'info');
-    setPhase('PLACEMENT');
-  };
+        setProofStep('VERIFY_ROOT');
+        let resolveTxHash: string | undefined;
+        if (!isFreeMatch) {
+          resolveTxHash = await CompactContractService.resolveShot(
+            matchData.matchIdBytes32,
+            cellIndex,
+            result.hit,
+            leaf,
+            proof
+          );
+        }
+
+        await resolveShotMutation({
+          matchIdBytes32: matchData.matchIdBytes32,
+          playerToken: matchData.playerToken,
+          x: pending.x,
+          y: pending.y,
+          hit: result.hit,
+          sunkShipType: result.type === ShotResultType.SUNK ? result.sunkShipType : undefined,
+          proofVerified,
+          merkleRoot: merkleTree.root,
+          resolveTxHash
+        });
+
+        setProofStep('COMPLETE');
+        setTimeout(() => setProofStep(null), 500);
+      } catch (err: any) {
+        console.error('Shot resolution error:', err);
+        setProofStep(null);
+        resolvingShotKeyRef.current = null;
+        setActionError(err?.message || 'Failed to resolve incoming shot proof.');
+      }
+    };
+
+    resolveIncoming();
+  }, [liveMatch?.pendingShot, matchData.role, matchData.matchIdBytes32, matchData.playerToken, merkleTree, myBoard, isFreeMatch, resolveShotMutation]);
 
   const selectNextAvailableShip = (board: BoardState) => {
     const remaining = FLEET_SHIPS.filter((s) => !board.ships.some((p) => p.type === s));
@@ -193,8 +258,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   };
 
   const handleCellPlacementClick = (pos: Position) => {
-    if (phase !== 'PLACEMENT' || isMyReady || !selectedShipType) return;
-
+    if (phase !== 'PLACEMENT' || myCommitted || !selectedShipType) return;
     if (isValidPlacement(myBoard, selectedShipType, pos, orientation)) {
       const updated = placeShip(myBoard, selectedShipType, pos, orientation);
       setMyBoard(updated);
@@ -203,119 +267,119 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   };
 
   const handleAutoPlace = () => {
-    if (isMyReady) return;
-    const randomBoard = generateRandomBoard();
-    setMyBoard(randomBoard);
+    if (myCommitted) return;
+    setMyBoard(generateRandomBoard());
     setSelectedShipType(null);
   };
 
   const handleResetPlacement = () => {
-    if (isMyReady) return;
+    if (myCommitted) return;
     setMyBoard(createEmptyBoard());
     setSelectedShipType(FLEET_SHIPS[0]);
   };
 
   const handleSubmitPlacement = async () => {
     if (placedShipTypes.length !== FLEET_SHIPS.length) return;
-    setIsMyReady(true);
+    setActionError(null);
+    try {
+      const merkleResult = await buildBoardMerkleTree(myBoard.ships);
+      setMerkleTree(merkleResult);
 
-    // Build 100-cell Merkle tree & private board commitment root
-    const merkleResult = await buildBoardMerkleTree(myBoard.ships);
-    setMerkleTree(merkleResult);
-    setBoardCommitment(merkleResult.root);
-
-    if (matchData.role === 'host') {
-      await CompactContractService.createGame(matchData.matchIdBytes32, merkleResult.root);
-    } else {
-      await CompactContractService.joinGame(matchData.matchIdBytes32, merkleResult.root);
-    }
-
-    if (socket && socket.connected) {
-      socket.emit(SocketEvent.SUBMIT_PLACEMENT, {
-        matchId: matchData.matchId,
+      await submitCommitmentMutation({
+        matchIdBytes32: matchData.matchIdBytes32,
         playerToken: matchData.playerToken,
-        board: myBoard,
         boardCommitment: merkleResult.root
       });
-    } else {
-      const randomOppBoard = generateRandomBoard();
-      setOpponentBoard(randomOppBoard);
-      setPhase('PLAYING');
-      setCurrentTurn(matchData.playerId);
-      addLog('PLAYER', `Fleet committed! Board Commitment root: ${merkleResult.root.substring(0, 16)}...`, 'info');
+
+      if (isFreeMatch) {
+        await confirmStakeMutation({
+          matchIdBytes32: matchData.matchIdBytes32,
+          playerToken: matchData.playerToken,
+          txHash: 'free_zk_match'
+        });
+      }
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to submit fleet commitment.');
     }
   };
 
-  const handleFireShot = (pos: Position) => {
-    if (phase !== 'PLAYING' || !isMyTurn) return;
+  const handleStakeConfirmed = async (txHash: string) => {
+    try {
+      await confirmStakeMutation({
+        matchIdBytes32: matchData.matchIdBytes32,
+        playerToken: matchData.playerToken,
+        txHash
+      });
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to record stake confirmation.');
+    }
+  };
+
+  const handleFireShot = async (pos: Position) => {
+    if (phase !== 'PLAYING' || !liveMatch) return;
+    if (liveMatch.currentTurn !== matchData.role || liveMatch.pendingShot || isFiring) return;
     if (enemyOceanTracking[pos.y][pos.x] !== CellStatus.EMPTY) return;
 
-    if (socket && socket.connected) {
-      socket.emit(SocketEvent.FIRE_SHOT, {
-        matchId: matchData.matchId,
-        playerToken: matchData.playerToken,
-        pos
-      });
-    } else if (opponentBoard) {
-      const colLabel = String.fromCharCode(65 + pos.x);
-      const coordStr = `${colLabel}${pos.y + 1}`;
-      const targetIndex = pos.y * BOARD_SIZE + pos.x;
+    setActionError(null);
+    setIsFiring(true);
 
-      // Invoke fire_shot circuit on Compact contract via Lace wallet connector
-      CompactContractService.fireShot(matchData.matchIdBytes32, targetIndex);
-
-      const isHit = opponentBoard.grid[pos.y][pos.x] === CellStatus.SHIP;
-      const newTracking = enemyOceanTracking.map((row) => [...row]);
-      newTracking[pos.y][pos.x] = isHit ? CellStatus.HIT : CellStatus.MISS;
-      setEnemyOceanTracking(newTracking);
-
-      setMyShots((prev) => prev + 1);
-      if (isHit) {
-        const nextHits = myHits + 1;
-        setMyHits(nextHits);
-        addLog('PLAYER', `You fired at ${coordStr} — HIT (Verified on-chain via Compact fire_shot)`, 'hit');
-
-        // Contract win condition check (17 total hits)
-        if (nextHits >= 17) {
-          setWinnerId(matchData.playerId);
-          setPhase('FINISHED');
-          setShowStatsModal(true);
-          addLog('PLAYER', 'VICTORY! Destroyed 17/17 enemy vessel cells! Compact contract emitted GAME_OVER event.', 'sunk');
-        }
-      } else {
-        addLog('PLAYER', `You fired at ${coordStr} — MISS (Verified on-chain via Compact fire_shot)`, 'miss');
-      }
-    }
-  };
-
-  const handleClaimWinnerPayout = async () => {
-    if (!matchData.matchIdBytes32) return;
-    setIsClaimPending(true);
     try {
-      const hash = await CompactContractService.claimWinnerPayout(matchData.matchIdBytes32);
-      setPayoutTxHash(hash as `0x${string}`);
-      setIsClaimPending(false);
-      setIsClaimSuccess(true);
+      let txHash: string | undefined;
+      if (!isFreeMatch) {
+        const coordIndex = pos.y * BOARD_SIZE + pos.x;
+        txHash = await CompactContractService.fireShot(matchData.matchIdBytes32, coordIndex);
+      }
+
+      await fireShotMutation({
+        matchIdBytes32: matchData.matchIdBytes32,
+        playerToken: matchData.playerToken,
+        x: pos.x,
+        y: pos.y,
+        txHash
+      });
     } catch (err: any) {
-      console.error('Claim Error:', err);
-      setIsClaimPending(false);
+      setActionError(err?.message || 'Failed to fire shot.');
+    } finally {
+      setIsFiring(false);
     }
   };
 
   const handleClaimTimeoutVictory = async () => {
-    if (!matchData.matchIdBytes32) return;
+    setActionError(null);
     setIsClaimPending(true);
     try {
-      const hash = await CompactContractService.claimTimeoutVictory(matchData.matchIdBytes32);
-      setPayoutTxHash(hash as `0x${string}`);
-      setWinnerId(matchData.playerId);
-      setPhase('FINISHED');
-      setShowStatsModal(true);
-      setIsClaimPending(false);
-      setIsClaimSuccess(true);
-      addLog('PLAYER', 'DISPUTE TIMEOUT VICTORY! Opponent inactive for >60s. Claimed 2x NIGHT escrow pot.', 'sunk');
+      let hash: string | undefined;
+      if (!isFreeMatch) {
+        hash = await CompactContractService.claimTimeoutVictory(matchData.matchIdBytes32);
+      }
+      await claimTimeoutMutation({
+        matchIdBytes32: matchData.matchIdBytes32,
+        playerToken: matchData.playerToken,
+        payoutTxHash: hash
+      });
+      if (hash) setPayoutTxHash(hash);
     } catch (err: any) {
-      console.error('Timeout Claim Error:', err);
+      setActionError(err?.message || 'Timeout victory claim failed.');
+    } finally {
+      setIsClaimPending(false);
+    }
+  };
+
+  const handleClaimWinnerPayout = async () => {
+    if (isFreeMatch) return;
+    setActionError(null);
+    setIsClaimPending(true);
+    try {
+      const hash = await CompactContractService.claimWinnerPayout(matchData.matchIdBytes32);
+      setPayoutTxHash(hash);
+      await recordPayoutMutation({
+        matchIdBytes32: matchData.matchIdBytes32,
+        playerToken: matchData.playerToken,
+        payoutTxHash: hash
+      });
+    } catch (err: any) {
+      setActionError(err?.message || 'Winner payout claim failed.');
+    } finally {
       setIsClaimPending(false);
     }
   };
@@ -326,42 +390,84 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isMyTurn = liveMatch?.currentTurn === matchData.role && !liveMatch?.pendingShot;
+  const waitingOnOpponentAction =
+    phase === 'PLAYING' &&
+    liveMatch &&
+    (liveMatch.pendingShot
+      ? liveMatch.pendingShot.shooter === matchData.role
+      : liveMatch.currentTurn !== matchData.role);
+
+  const inactiveSeconds = liveMatch?.lastActionAt
+    ? Math.floor((nowMs - liveMatch.lastActionAt) / 1000)
+    : 0;
+  const canClaimTimeout = !!waitingOnOpponentAction && inactiveSeconds >= 60;
+
+  const isWinner = liveMatch?.winnerRole === matchData.role;
+  const effectivePayoutTx = payoutTxHash || liveMatch?.payoutTxHash;
+  const totalPayoutNight = (Number(matchData.stakeAmountEth) * 2).toFixed(2);
+
+  const myAccuracy = myShots > 0 ? Math.round((myHits / myShots) * 100) : 0;
+  const oppAccuracy = oppShots > 0 ? Math.round((oppHits / oppShots) * 100) : 0;
+  const myShipsAlive =
+    FLEET_SHIPS.length -
+    myBoard.ships.filter((s) => s.sunk || s.hits >= (s.length || SHIP_SIZES[s.type])).length;
+  const oppShipsAlive = Math.max(0, 5 - Math.floor(myHits / 3));
+
   const isValidHover =
     hoverPos && selectedShipType
       ? isValidPlacement(myBoard, selectedShipType, hoverPos, orientation)
       : false;
 
-  const myAccuracy = myShots > 0 ? Math.round((myHits / myShots) * 100) : 0;
-  const oppAccuracy = oppShots > 0 ? Math.round((oppHits / oppShots) * 100) : 0;
-
-  const myShipsAlive = FLEET_SHIPS.length - myBoard.ships.filter((s) => s.sunk || s.hits >= (s.length || SHIP_SIZES[s.type])).length;
-  const oppShipsAlive = opponentBoard
-    ? FLEET_SHIPS.length - opponentBoard.ships.filter((s) => s.sunk || s.hits >= (s.length || SHIP_SIZES[s.type])).length
-    : 5;
-
-  const isWinner = winnerId ? winnerId === matchData.playerId : false;
+  const opponentLabel = isHost
+    ? liveMatch?.guestName || matchData.player2Name || 'Awaiting Opponent'
+    : liveMatch?.hostName || matchData.player1Name;
 
   return (
     <div className="flex flex-col justify-between min-h-[calc(100vh-80px)] w-full max-w-[1850px] mx-auto px-4 lg:px-8 py-4 space-y-5 font-mono">
+      <ProofGenerationOverlay
+        isOpen={proofStep !== null}
+        step={proofStep || 'WITNESS'}
+        message="Computing 100-cell Merkle witness & verifying defending coordinate..."
+      />
+
       {/* Header Bar */}
-      <div className="w-full flex items-center justify-between bg-[#091015] p-3.5 rounded-xl border border-slate-800 text-xs shadow-xl">
+      <div className="w-full flex flex-wrap items-center justify-between gap-3 bg-[#091015] p-3.5 rounded-xl border border-slate-800 text-xs shadow-xl">
         <button
           onClick={onExit}
           className="flex items-center space-x-2 text-slate-400 hover:text-emerald-400 font-bold transition cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>EXIT LOBBY</span>
+          <span>EXIT MATCH</span>
         </button>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleCopyMatchCode}
+            className="text-xs text-emerald-400 bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 font-bold flex items-center gap-1.5 cursor-pointer"
+            title="Copy Match Code"
+          >
+            <span>CODE: #{matchData.matchCode}</span>
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+
           <span className="text-xs text-emerald-400 bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 font-bold flex items-center gap-1.5">
             <Coins className="w-3.5 h-3.5 text-emerald-400" />
-            STAKE: {matchData.stakeAmountEth} NIGHT
+            {isFreeMatch ? 'FREE ZK MATCH' : `STAKE: ${matchData.stakeAmountEth} NIGHT`}
           </span>
 
           {phase === 'PLAYING' && (
             <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-[#050B0E] border border-slate-800 text-[11px] font-bold">
-              {isMyTurn ? (
+              {liveMatch?.pendingShot ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                  <span className="text-amber-400">
+                    {liveMatch.pendingShot.shooter === matchData.role
+                      ? 'AWAITING DEFENDER ZK MERKLE PROOF...'
+                      : 'VERIFYING INCOMING SHOT PROOF...'}
+                  </span>
+                </>
+              ) : isMyTurn ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span className="text-emerald-400">YOUR TURN — Target opponent grid</span>
@@ -369,20 +475,45 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                  <span className="text-amber-400">OPPONENT'S TURN...</span>
+                  <span className="text-amber-400">OPPONENT&apos;S TURN...</span>
                 </>
               )}
             </div>
           )}
 
+          {waitingOnOpponentAction && (
+            <button
+              disabled={!canClaimTimeout || isClaimPending}
+              onClick={handleClaimTimeoutVictory}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 border transition ${
+                canClaimTimeout
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 cursor-pointer hover:bg-amber-400'
+                  : 'bg-[#050B0E] text-slate-400 border-slate-800 cursor-not-allowed'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>
+                {canClaimTimeout
+                  ? 'CLAIM 60s TIMEOUT VICTORY'
+                  : `TIMEOUT (${Math.max(0, 60 - inactiveSeconds)}s)`}
+              </span>
+            </button>
+          )}
+
           {phase === 'FINISHED' && (
             <div className="flex items-center space-x-3">
-              <span className={`px-3 py-1 rounded-lg text-xs font-black tracking-wider uppercase flex items-center gap-1.5 ${
-                isWinner
-                  ? 'bg-emerald-950 border border-emerald-500 text-emerald-400'
-                  : 'bg-red-950 border border-red-500 text-red-400'
-              }`}>
-                {isWinner ? <Trophy className="w-4 h-4 text-amber-400" /> : <Flame className="w-4 h-4 text-red-400" />}
+              <span
+                className={`px-3 py-1 rounded-lg text-xs font-black tracking-wider uppercase flex items-center gap-1.5 ${
+                  isWinner
+                    ? 'bg-emerald-950 border border-emerald-500 text-emerald-400'
+                    : 'bg-red-950 border border-red-500 text-red-400'
+                }`}
+              >
+                {isWinner ? (
+                  <Trophy className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Flame className="w-4 h-4 text-red-400" />
+                )}
                 <span>WINNER: {isWinner ? 'YOU (VICTORY!)' : 'OPPONENT'}</span>
               </span>
 
@@ -391,93 +522,55 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
                 className="flex items-center space-x-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1 rounded-lg transition shadow-md shadow-emerald-500/30 cursor-pointer"
               >
                 <BarChart3 className="w-3.5 h-3.5" />
-                <span>Accuracy & Claim</span>
+                <span>Accuracy &amp; Claim</span>
               </button>
             </div>
           )}
         </div>
       </div>
 
+      {actionError && (
+        <div className="p-3 bg-red-950/80 border border-red-800 text-red-300 text-xs rounded-xl flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <span>{actionError}</span>
+        </div>
+      )}
+
       {/* Main View Area */}
       {phase === 'STAKING' ? (
         <div className="flex flex-col items-center justify-center py-6 w-full max-w-2xl mx-auto space-y-6">
-          {/* HERO CENTER CARD: MATCH CODE WITH ONE-CLICK COPY */}
-          <div className="w-full bg-[#091015] border-2 border-emerald-500/40 p-8 rounded-3xl shadow-2xl shadow-emerald-500/10 text-center space-y-5 relative overflow-hidden backdrop-blur-xl">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
+          <div className="w-full bg-[#091015] border-2 border-emerald-500/40 p-6 rounded-3xl shadow-2xl text-center space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-xs font-bold uppercase tracking-widest">
               <Users className="w-3.5 h-3.5" />
-              <span>STAKED MATCH CODE</span>
+              <span>MATCH #{matchData.matchCode}</span>
             </div>
-
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                SHARE THIS CODE WITH YOUR OPPONENT TO ENTER ESCROW
-              </p>
-              <div className="flex items-center justify-center gap-4">
-                <span className="font-mono text-4xl sm:text-5xl font-black text-emerald-400 tracking-[0.2em] bg-[#050B0E] px-8 py-4 rounded-2xl border border-emerald-500/50 shadow-inner drop-shadow-[0_0_25px_rgba(16,185,129,0.35)]">
-                  #{matchData.matchCode}
-                </span>
-                <button
-                  onClick={handleCopyMatchCode}
-                  className="px-6 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl transition shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center"
-                  title="Copy Match Code"
-                >
-                  {copied ? (
-                    <span className="flex items-center gap-2 text-xs font-mono">
-                      <Check className="w-5 h-5 text-slate-950" />
-                      <span>COPIED!</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2 text-xs font-mono">
-                      <Copy className="w-5 h-5 text-slate-950" />
-                      <span>COPY CODE</span>
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-slate-400 font-sans">
+              Fleet commitment root ready ({boardCommitment?.slice(0, 14)}...). Deposit your NIGHT escrow stake to lock on-chain.
+            </p>
           </div>
 
-          {/* Midnight Escrow Staking Panel */}
           <StakingPanel
             matchIdBytes32={matchData.matchIdBytes32}
             stakeAmountEth={matchData.stakeAmountEth}
             role={matchData.role}
-            hasStaked={hasStaked}
+            hasStaked={myStaked}
+            boardCommitment={boardCommitment}
             onStakeConfirmed={handleStakeConfirmed}
           />
-
-          {/* Proceed Action Button - Strictly Gated by On-Chain Escrow Stake Deposit */}
-          {hasStaked ? (
-            <button
-              onClick={() => setPhase('PLACEMENT')}
-              className="w-full max-w-md py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer animate-pulse"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>ESCROW CONFIRMED — PROCEED TO FLEET PLACEMENT</span>
-            </button>
-          ) : (
-            <div className="w-full max-w-md p-4 bg-[#050B0E] border border-amber-500/30 rounded-2xl text-center space-y-1 text-xs text-amber-400 font-mono">
-              <div className="flex items-center justify-center gap-2 font-bold uppercase">
-                <Shield className="w-4 h-4 text-amber-400" />
-                <span>ON-CHAIN STAKING REQUIRED</span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                You must approve the {matchData.stakeAmountEth} NIGHT escrow deposit in Lace Wallet to unlock match placement.
-              </p>
-            </div>
-          )}
         </div>
       ) : phase === 'PLACEMENT' ? (
         <div className="grid lg:grid-cols-12 gap-6 w-full items-start">
           <div className="lg:col-span-8 flex justify-center">
             <BoardGrid
               title="YOUR WATERS"
-              subtitle={isMyReady ? 'FLEET LOCKED — Awaiting opponent readiness...' : 'DEFEND YOUR FLEET — Hover to position ships'}
+              subtitle={
+                myCommitted
+                  ? 'FLEET COMMITTED — Awaiting opponent readiness...'
+                  : 'DEFEND YOUR FLEET — Click to position 5 vessels'
+              }
               grid={myBoard.grid}
               ships={myBoard.ships}
-              interactive={!isMyReady}
+              interactive={!myCommitted}
               onCellClick={handleCellPlacementClick}
               hoverPos={hoverPos}
               hoverShipLength={selectedShipType ? SHIP_SIZES[selectedShipType] : undefined}
@@ -502,9 +595,16 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
               placedShipTypes={placedShipTypes}
             />
 
-            {isMyReady && (
-              <div className="w-full bg-[#091015] p-4 rounded-xl border border-emerald-500/40 text-center text-xs text-emerald-400 font-bold">
-                ✓ FLEET LOCKED & READY FOR ENGAGEMENT
+            {myCommitted && (
+              <div className="w-full bg-[#091015] p-4 rounded-xl border border-emerald-500/40 text-center text-xs text-emerald-400 font-bold space-y-1">
+                <div>✓ FLEET COMMITTED ({boardCommitment?.slice(0, 12)}...)</div>
+                <div className="text-[10px] text-slate-400 font-sans">
+                  {oppCommitted
+                    ? oppStaked
+                      ? 'Starting battle...'
+                      : 'Waiting for opponent NIGHT escrow stake...'
+                    : `Waiting for ${opponentLabel} to join & deploy their fleet...`}
+                </div>
               </div>
             )}
           </div>
@@ -543,16 +643,16 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
                   title="ENEMY WATERS"
                   subtitle={
                     phase === 'FINISHED'
-                      ? 'DESTROY ENEMY FLEET (REVEALED)'
+                      ? 'BATTLE CONCLUDED'
                       : isMyTurn
                       ? 'SELECT A TARGET COORDINATE'
-                      : 'AWAITING OPPONENT MOVE'
+                      : 'AWAITING OPPONENT'
                   }
-                  grid={phase === 'FINISHED' && opponentBoard ? opponentBoard.grid : enemyOceanTracking}
-                  ships={opponentBoard ? opponentBoard.ships : []}
+                  grid={enemyOceanTracking}
+                  ships={[]}
                   isEnemyView={true}
-                  revealShips={phase === 'FINISHED'}
-                  interactive={isMyTurn && phase === 'PLAYING'}
+                  revealShips={false}
+                  interactive={!!isMyTurn && phase === 'PLAYING' && !isFiring}
                   onCellClick={handleFireShot}
                   actionButtonLabel={
                     phase === 'FINISHED'
@@ -568,14 +668,14 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
 
           <div className="col-span-12 lg:col-span-3">
             <MatchInfoPanel
-              playerAddress={address}
-              opponentName={matchData.role === 'host' ? matchData.player2Name || 'Challenger' : matchData.player1Name}
-              isMyTurn={isMyTurn}
+              playerAddress={address || undefined}
+              opponentName={opponentLabel}
+              isMyTurn={!!isMyTurn}
               playerShipsLeft={myShipsAlive}
               opponentShipsLeft={oppShipsAlive}
               stakeAmountEth={matchData.stakeAmountEth}
               turnCount={myShots + oppShots}
-              logs={logs}
+              logs={liveMatch?.logs || []}
             />
           </div>
         </div>
@@ -602,11 +702,13 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
             </div>
 
             <div className="mb-4">
-              <span className={`inline-block px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase mb-2 ${
-                isWinner
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                  : 'bg-red-500/20 text-red-300 border border-red-500/40'
-              }`}>
+              <span
+                className={`inline-block px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase mb-2 ${
+                  isWinner
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                }`}
+              >
                 MATCH WINNER: {isWinner ? 'YOU (VICTORY!)' : 'OPPONENT'}
               </span>
 
@@ -615,22 +717,21 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
               </h3>
             </div>
 
-            {/* Winner Payout Claim Box */}
-            {isWinner && payoutSignature && (
+            {isWinner && !isFreeMatch && (
               <div className="mb-6 p-4 bg-[#050B0E] rounded-2xl border border-emerald-500/30 text-left space-y-3">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-slate-400">Total Escrow Prize Pool:</span>
-                  <span className="text-emerald-400 font-bold text-sm">{totalPayoutEth} NIGHT</span>
+                  <span className="text-emerald-400 font-bold text-sm">{totalPayoutNight} NIGHT</span>
                 </div>
 
-                {isClaimSuccess && payoutTxHash ? (
+                {effectivePayoutTx ? (
                   <div className="p-3 bg-emerald-950/60 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 space-y-1">
                     <div className="flex items-center gap-1.5 font-bold">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                       <span>Stake Payout Claimed!</span>
                     </div>
                     <a
-                      href={`${MIDNIGHT_TESTNET.blockExplorer}/tx/${payoutTxHash}`}
+                      href={`${MIDNIGHT_TESTNET.blockExplorer}/tx/${effectivePayoutTx}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[10px] text-emerald-400 underline font-mono flex items-center gap-1"
@@ -649,7 +750,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
                     <span>
                       {isClaimPending
                         ? 'Confirming in Wallet...'
-                        : `Claim ${totalPayoutEth} Pooled Stake`}
+                        : `Claim ${totalPayoutNight} NIGHT Pooled Stake`}
                     </span>
                   </button>
                 )}

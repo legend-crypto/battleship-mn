@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useMidnightWallet } from '../context/MidnightWalletContext';
 import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
 import { CompactContractService } from '../services/compactContractService';
-import { Coins, ExternalLink, Lock, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Clock } from 'lucide-react';
+import { Coins, ExternalLink, Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface StakingPanelProps {
   matchIdBytes32: string;
@@ -19,7 +19,7 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
   role,
   hasStaked,
   onStakeConfirmed,
-  boardCommitment = '0xaaf66062a83c21ca947f63e67f90fe68526bc4ea1124eeb18812e7b63d9f8f83d'
+  boardCommitment
 }) => {
   const { isConnected, connect, isConnecting } = useMidnightWallet();
 
@@ -29,6 +29,11 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
 
   const handleDepositStake = async () => {
     setErrorMessage(null);
+
+    if (!boardCommitment) {
+      setErrorMessage('Fleet commitment missing: place your 5 ships first so your Merkle root can be committed on-chain.');
+      return;
+    }
 
     if (!isConnected) {
       try {
@@ -82,7 +87,7 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
         </div>
         <div className="flex justify-between items-center text-slate-400 text-[11px]">
           <span>Escrow Smart Contract:</span>
-          <span className="text-slate-200 font-mono text-[10px]">BattleshipStaking.compact</span>
+          <span className="text-slate-200 font-mono text-[10px]">battleship.compact</span>
         </div>
         <div className="flex justify-between items-center text-slate-400 text-[11px]">
           <span>Inactivity Timeout:</span>
@@ -97,7 +102,7 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
             <span>NIGHT Escrow Deposit Confirmed!</span>
           </div>
           <p className="text-[11px] text-emerald-400/80 font-sans">
-            Your {stakeAmountEth} NIGHT stake is safely held in contract escrow. Winner receives 2x total pot ({parseFloat(stakeAmountEth) * 2} NIGHT).
+            Your {stakeAmountEth} NIGHT stake is held in contract escrow. Winner receives 2x total pot ({(parseFloat(stakeAmountEth) * 2).toFixed(2)} NIGHT).
           </p>
           {txHash && (
             <a
@@ -121,7 +126,7 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>SIGNING TRANSACTION IN LACE WALLET...</span>
+                <span>SUBMITTING TO MIDNIGHT NETWORK...</span>
               </>
             ) : isConnecting ? (
               <>
@@ -131,7 +136,7 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
             ) : !isConnected ? (
               <>
                 <Lock className="w-4 h-4" />
-                <span>CONNECT WALLET & DEPOSIT {stakeAmountEth} NIGHT STAKE</span>
+                <span>CONNECT WALLET &amp; DEPOSIT {stakeAmountEth} NIGHT STAKE</span>
               </>
             ) : (
               <>
@@ -142,8 +147,8 @@ export const StakingPanel: React.FC<StakingPanelProps> = ({
           </button>
 
           {errorMessage && (
-            <div className="p-3 bg-red-950/80 border border-red-800 text-red-300 text-[11px] rounded-xl flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <div className="p-3 bg-red-950/80 border border-red-800 text-red-300 text-[11px] rounded-xl flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
           )}

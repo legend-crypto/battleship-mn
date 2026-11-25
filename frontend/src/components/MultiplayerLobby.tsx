@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { SocketEvent, MatchSummary } from '@battleship/shared';
-import { socketService } from '../services/socket';
 import { WalletConnect } from './WalletConnect';
 import { useMidnightWallet } from '../context/MidnightWalletContext';
-import { Swords, Plus, LogIn, Users, Copy, Check, ArrowLeft, RefreshCw, Coins, Lock, ShieldCheck, Play, Sparkles } from 'lucide-react';
+import { generateMatchIdBytes32 } from '../utils/merkle';
+import { Swords, Plus, LogIn, Users, ArrowLeft, Coins, Lock } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { ConvexErrorBoundary } from './ConvexErrorBoundary';
@@ -23,65 +22,60 @@ interface MultiplayerLobbyProps {
   }) => void;
 }
 
-// Inner component that safely uses Convex hooks
 const RealtimeConvexLobbies: React.FC<{
-  onJoinMatch: (code: string, matchIdBytes32?: string) => void;
-  localLobbies: MatchSummary[];
-}> = ({ onJoinMatch, localLobbies }) => {
-  let convexLobbies: any[] | undefined;
-  try {
-    convexLobbies = useQuery(api.matches.listOpenLobbies);
-  } catch (e) {
-    console.warn('Convex listOpenLobbies query warning:', e);
-  }
+  onJoinMatch: (code: string, matchIdBytes32: string, stakeAmountEth: string) => void;
+}> = ({ onJoinMatch }) => {
+  const convexLobbies = useQuery(api.matches.listOpenLobbies);
 
-  const openLobbies = (convexLobbies && convexLobbies.length > 0)
-    ? convexLobbies.map((m: any) => ({
-        matchId: m._id,
-        matchCode: m.matchIdBytes32 ? m.matchIdBytes32.slice(-6).toUpperCase() : '849201',
-        hostName: m.hostAddress ? `${m.hostAddress.slice(0, 6)}...${m.hostAddress.slice(-4)}` : 'Commander Host',
-        playerCount: m.playerCount || 1,
-        status: m.status || 'OPEN'
-      }))
-    : localLobbies.map((l: any) => ({
-        ...l,
-        playerCount: 1,
-        status: 'OPEN'
-      }));
+  if (convexLobbies === undefined) {
+    return (
+      <div className="text-center py-6 text-slate-400 text-xs font-sans">
+        Loading open lobbies from Convex...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-      {openLobbies.length === 0 ? (
+      {convexLobbies.length === 0 ? (
         <div className="text-center py-6 text-slate-500 text-xs font-sans">
-          No open lobbies right now. Create a new open game on the left!
+          No open lobbies right now. Create a new game on the left!
         </div>
       ) : (
-        openLobbies.map((lobby) => (
-          <div
-            key={lobby.matchId}
-            className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs font-mono"
-          >
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white block">{lobby.hostName}</span>
-                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
-                  {lobby.playerCount}/2 PLAYERS
+        convexLobbies.map((m: any) => {
+          const code = m.matchCode || m.matchIdBytes32.slice(-6).toUpperCase();
+          const hostLabel =
+            m.hostName ||
+            (m.hostAddress ? `${m.hostAddress.slice(0, 6)}...${m.hostAddress.slice(-4)}` : 'Commander Host');
+          const isFree = Number(m.stakeAmountEth) === 0;
+
+          return (
+            <div
+              key={m._id}
+              className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs font-mono"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white block">{hostLabel}</span>
+                  <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                    {m.playerCount || 1}/2 PLAYERS
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {isFree ? 'Free ZK Merkle Match' : `Stake: ${m.stakeAmountEth} NIGHT`} • #{code}
                 </span>
               </div>
-              <span className="text-[10px] text-slate-400 font-mono">
-                Compact Master Contract • #{lobby.matchCode}
-              </span>
-            </div>
 
-            <button
-              onClick={() => onJoinMatch(lobby.matchCode, lobby.matchId)}
-              className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg transition shadow cursor-pointer flex items-center gap-1 uppercase"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>JOIN GAME</span>
-            </button>
-          </div>
-        ))
+              <button
+                onClick={() => onJoinMatch(code, m.matchIdBytes32, m.stakeAmountEth)}
+                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg transition shadow cursor-pointer flex items-center gap-1 uppercase"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>JOIN GAME</span>
+              </button>
+            </div>
+          );
+        })
       )}
     </div>
   );
@@ -91,175 +85,136 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
   const { address, isConnected } = useMidnightWallet();
 
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('mn_player_name') || 'Captain Alpha');
-  const [stakeAmountEth, setStakeAmountEth] = useState('0.1');
+  const [stakeAmountEth, setStakeAmountEth] = useState('0');
   const [joinCode, setJoinCode] = useState('');
-  const [localLobbies, setLocalLobbies] = useState<MatchSummary[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Safe Convex mutation hooks
-  let createLobbyMutation: any;
-  let joinLobbyMutation: any;
-  try {
-    createLobbyMutation = useMutation(api.matches.createLobby);
-    joinLobbyMutation = useMutation(api.matches.joinLobby);
-  } catch (e) {
-    console.warn('Convex mutation hooks init warning:', e);
-  }
-
-  const socket = socketService.getSocket();
+  const createLobbyMutation = useMutation(api.matches.createLobby);
+  const joinLobbyMutation = useMutation(api.matches.joinLobby);
 
   useEffect(() => {
     localStorage.setItem('mn_player_name', playerName);
   }, [playerName]);
 
-  // Load existing saved local lobbies
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('mn_open_lobbies');
-      if (saved) {
-        setLocalLobbies(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.warn('Failed to parse local lobbies:', e);
+  const getEffectiveAddress = () => {
+    if (address) return address;
+    let guestId = localStorage.getItem('mn_ephemeral_player_id');
+    if (!guestId) {
+      guestId = `guest_${crypto.randomUUID().slice(0, 12)}`;
+      localStorage.setItem('mn_ephemeral_player_id', guestId);
     }
-  }, []);
+    return guestId;
+  };
 
-  useEffect(() => {
-    if (socket && socket.connected) {
-      socket.emit(SocketEvent.LIST_MATCHES);
-
-      socket.on(SocketEvent.MATCH_LIST_UPDATED, (data: MatchSummary[]) => {
-        if (data && data.length > 0) setLocalLobbies(data);
-      });
-
-      socket.on(SocketEvent.PLAYER_JOINED, (data: any) => {
-        onMatchReady({
-          matchId: data.matchId,
-          matchCode: data.matchCode,
-          matchIdBytes32: data.matchIdBytes32,
-          stakeAmountEth: data.stakeAmountEth || '0.1',
-          playerToken: localStorage.getItem(`token_${data.matchId}`) || '',
-          playerId: localStorage.getItem(`pid_${data.matchId}`) || '',
-          role: 'host',
-          player1Name: data.player1?.name || playerName,
-          player2Name: data.player2?.name || 'Challenger'
-        });
-      });
-
-      socket.on(SocketEvent.ERROR, (data: { message: string }) => {
-        setErrorMsg(data.message);
-      });
-
-      return () => {
-        socket.off(SocketEvent.MATCH_LIST_UPDATED);
-        socket.off(SocketEvent.PLAYER_JOINED);
-        socket.off(SocketEvent.ERROR);
-      };
-    }
-  }, [socket, onMatchReady, playerName]);
-
-  // Synchronous, Non-Blocking Staked Match Creation
-  const handleCreateMatch = () => {
+  const handleCreateMatch = async () => {
     if (!playerName.trim()) {
       setErrorMsg('Please enter your captain callsign first.');
       return;
     }
 
-    if (!isConnected || !address) {
+    const isStaked = Number(stakeAmountEth) > 0;
+    if (isStaked && (!isConnected || !address)) {
       setErrorMsg('Please connect your Lace wallet in the header to create a Staked Match on Midnight Network.');
       return;
     }
 
     setErrorMsg('');
+    setIsSubmitting(true);
 
-    // Generate unique match IDs and 6-character match code
-    const rawMatchId = `match_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const matchIdBytes32 = `0xmn_${Date.now().toString(16)}_${Math.random().toString(36).substring(2, 10)}`;
-    const token = `token_host_${Date.now()}`;
-    const pId = `pid_host_${Date.now()}`;
+    try {
+      const matchIdBytes32 = generateMatchIdBytes32();
+      const matchCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const token = `host_${crypto.randomUUID()}`;
+      const callerAddress = getEffectiveAddress();
 
-    localStorage.setItem(`token_${rawMatchId}`, token);
-    localStorage.setItem(`pid_${rawMatchId}`, pId);
+      localStorage.setItem(`token_${matchIdBytes32}`, token);
+      localStorage.setItem(`pid_${matchIdBytes32}`, 'host');
 
-    // Save locally
-    const newLobby: MatchSummary = {
-      matchId: rawMatchId,
-      matchCode: randomCode,
-      stakeAmountEth: stakeAmountEth || '0.1',
-      hostName: playerName.trim(),
-      status: 'WAITING'
-    };
-
-    setLocalLobbies((prev) => {
-      const updated = [newLobby, ...prev];
-      localStorage.setItem('mn_open_lobbies', JSON.stringify(updated));
-      return updated;
-    });
-
-    // Non-blocking Convex mutation in background
-    if (createLobbyMutation) {
-      createLobbyMutation({
+      await createLobbyMutation({
         matchIdBytes32,
-        stakeAmountEth: stakeAmountEth || '0.1',
-        hostAddress: address,
+        matchCode,
+        stakeAmountEth,
+        hostAddress: callerAddress,
+        hostName: playerName.trim(),
         hostToken: token
-      }).catch((e: any) => console.warn('Convex createLobby non-blocking warning:', e));
-    }
-
-    if (socket && socket.connected) {
-      socket.emit(SocketEvent.CREATE_MATCH, {
-        playerName: playerName.trim(),
-        stakeAmountEth: stakeAmountEth || '0.1',
-        playerAddress: address
       });
-    }
 
-    // IMMEDIATELY ENTER MATCH STATION & STAKING PANEL (ZERO LATENCY!)
-    onMatchReady({
-      matchId: rawMatchId,
-      matchCode: randomCode,
-      matchIdBytes32,
-      stakeAmountEth: stakeAmountEth || '0.1',
-      playerToken: token,
-      playerId: pId,
-      role: 'host',
-      player1Name: playerName.trim(),
-      player2Name: 'Awaiting Opponent...'
-    });
+      onMatchReady({
+        matchId: matchIdBytes32,
+        matchCode,
+        matchIdBytes32,
+        stakeAmountEth,
+        playerToken: token,
+        playerId: 'host',
+        role: 'host',
+        player1Name: playerName.trim(),
+        player2Name: 'Awaiting Opponent...'
+      });
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to create match in Convex.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // Synchronous, Non-Blocking Join Match
-  const handleJoinMatch = (codeToJoin?: string, matchBytes32Param?: string) => {
+  const handleJoinMatch = async (codeToJoin?: string, matchIdParam?: string, expectedStake?: string) => {
     const code = (codeToJoin || joinCode).trim().toUpperCase();
     if (!playerName.trim()) {
       setErrorMsg('Please enter your captain callsign first.');
       return;
     }
-    setErrorMsg('');
-
-    const matchIdBytes32 = matchBytes32Param || keccak256(encodePacked(['string', 'string', 'uint256'], ['JOINED_MATCH', code, BigInt(Date.now())]));
-
-    if (address && joinLobbyMutation) {
-      joinLobbyMutation({
-        matchIdBytes32,
-        guestAddress: address,
-        guestToken: `token_guest_${Date.now()}`
-      }).catch((e: any) => console.warn('Convex joinLobby non-blocking warning:', e));
+    if (!matchIdParam && !code) {
+      setErrorMsg('Please enter a 6-digit match code.');
+      return;
     }
 
-    // IMMEDIATELY ENTER STAKING PANEL AS GUEST
-    onMatchReady({
-      matchId: `match_joined_${Date.now()}`,
-      matchCode: code || '849201',
-      matchIdBytes32,
-      stakeAmountEth: stakeAmountEth || '0.1',
-      playerToken: `token_guest_${Date.now()}`,
-      playerId: `pid_guest_${Date.now()}`,
-      role: 'guest',
-      player1Name: 'Host Admiral',
-      player2Name: playerName.trim()
-    });
+    const isStaked = expectedStake !== undefined && Number(expectedStake) > 0;
+    if (isStaked && (!isConnected || !address)) {
+      setErrorMsg('Please connect your Lace wallet in the header to join a Staked Match.');
+      return;
+    }
+
+    setErrorMsg('');
+    setIsSubmitting(true);
+
+    try {
+      const guestToken = `guest_${crypto.randomUUID()}`;
+      const callerAddress = getEffectiveAddress();
+
+      const joined = await joinLobbyMutation({
+        matchIdBytes32: matchIdParam,
+        matchCode: matchIdParam ? undefined : code,
+        guestAddress: callerAddress,
+        guestName: playerName.trim(),
+        guestToken
+      });
+
+      if (Number(joined.stakeAmountEth) > 0 && (!isConnected || !address)) {
+        setErrorMsg('This is a staked match. Please connect your Lace wallet first.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      localStorage.setItem(`token_${joined.matchIdBytes32}`, guestToken);
+      localStorage.setItem(`pid_${joined.matchIdBytes32}`, 'guest');
+
+      onMatchReady({
+        matchId: joined.matchIdBytes32,
+        matchCode: joined.matchCode,
+        matchIdBytes32: joined.matchIdBytes32,
+        stakeAmountEth: joined.stakeAmountEth,
+        playerToken: guestToken,
+        playerId: 'guest',
+        role: 'guest',
+        player1Name: joined.hostName,
+        player2Name: playerName.trim()
+      });
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Unable to join match.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -276,7 +231,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
 
         <h2 className="text-sm font-bold text-white flex items-center gap-2 tracking-wider">
           <Swords className="w-4 h-4 text-emerald-400" />
-          <span className="text-emerald-400 font-extrabold">MULTIPLAYER</span> STAKING LOBBY
+          <span className="text-emerald-400 font-extrabold">MULTIPLAYER</span> COMMAND LOBBY
         </h2>
 
         <WalletConnect />
@@ -297,8 +252,8 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
               <Plus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-white uppercase">HOST NEW STAKED MATCH</h3>
-              <p className="text-[11px] text-slate-400 font-sans">Deposit stake into Midnight Compact Escrow</p>
+              <h3 className="text-sm font-black text-white uppercase">HOST NEW MATCH</h3>
+              <p className="text-[11px] text-slate-400 font-sans">Real-time PvP via Convex + ZK Merkle proofs</p>
             </div>
           </div>
 
@@ -318,7 +273,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
 
             <div>
               <label className="block text-slate-400 mb-1.5 font-bold uppercase text-[10px] flex justify-between">
-                <span>Match Stake (Max 0.10 NIGHT)</span>
+                <span>Match Mode &amp; Wager</span>
                 <Coins className="w-3.5 h-3.5 text-emerald-400" />
               </label>
               <select
@@ -326,25 +281,32 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
                 onChange={(e) => setStakeAmountEth(e.target.value)}
                 className="w-full px-4 py-3 bg-[#050B0E] border border-slate-800 rounded-xl text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500"
               >
-                <option value="0.01">0.01 NIGHT Tokens (Prize Pool: 0.02 NIGHT)</option>
-                <option value="0.05">0.05 NIGHT Tokens (Prize Pool: 0.10 NIGHT)</option>
-                <option value="0.1">0.10 NIGHT Tokens (Max Stake: 0.20 NIGHT)</option>
+                <option value="0">0 NIGHT — Free PvP (Convex + Client ZK Merkle Proofs)</option>
+                <option value="0.01">0.01 NIGHT — Staked Midnight Escrow (Requires Lace + Proof Server)</option>
+                <option value="0.05">0.05 NIGHT — Staked Midnight Escrow (Requires Lace + Proof Server)</option>
+                <option value="0.1">0.10 NIGHT — Staked Midnight Escrow (Requires Lace + Proof Server)</option>
               </select>
             </div>
 
             <button
+              disabled={isSubmitting}
               onClick={handleCreateMatch}
-              className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-2 cursor-pointer mt-2"
+              className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-2 cursor-pointer mt-2 disabled:opacity-50"
             >
               <Lock className="w-4 h-4" />
-              <span>CREATE & DEPOSIT {stakeAmountEth} STAKE</span>
+              <span>
+                {isSubmitting
+                  ? 'CREATING LOBBY...'
+                  : Number(stakeAmountEth) === 0
+                  ? 'CREATE FREE ZK PVP MATCH'
+                  : `CREATE STAKED MATCH (${stakeAmountEth} NIGHT)`}
+              </span>
             </button>
           </div>
         </div>
 
         {/* Right Column: Join Match by Code & Live Lobbies */}
         <div className="md:col-span-6 space-y-6">
-          {/* Join by Code Card */}
           <div className="bg-[#091015] border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
             <div className="flex items-center space-x-3 pb-3 border-b border-slate-800">
               <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-300">
@@ -352,7 +314,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
               </div>
               <div>
                 <h3 className="text-sm font-black text-white uppercase">JOIN VIA MATCH CODE</h3>
-                <p className="text-[11px] text-slate-400 font-sans">Enter 6-digit match code to enter escrow</p>
+                <p className="text-[11px] text-slate-400 font-sans">Enter 6-digit match code to join opponent</p>
               </div>
             </div>
 
@@ -366,59 +328,32 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onBackToMenu
                 className="flex-1 px-4 py-3 bg-[#050B0E] border border-slate-800 rounded-xl text-emerald-400 font-mono font-bold tracking-widest text-center text-base focus:outline-none focus:border-emerald-500 uppercase"
               />
               <button
+                disabled={isSubmitting}
                 onClick={() => handleJoinMatch()}
-                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
+                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer disabled:opacity-50"
               >
                 JOIN
               </button>
             </div>
           </div>
 
-          {/* Active Lobbies Table */}
           <div className="bg-[#091015] border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h4 className="text-xs font-black text-white uppercase flex items-center gap-2">
                 <Users className="w-4 h-4 text-emerald-400" />
-                <span>OPEN STAKED LOBBIES</span>
+                <span>OPEN CONVEX LOBBIES</span>
               </h4>
-              <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
-                {localLobbies.length} ACTIVE
-              </span>
             </div>
 
             <ConvexErrorBoundary
               fallback={
-                <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-                  {localLobbies.length === 0 ? (
-                    <div className="text-center py-6 text-slate-500 text-xs font-sans">
-                      No open lobbies right now. Create a new staked match on the left!
-                    </div>
-                  ) : (
-                    localLobbies.map((lobby) => (
-                      <div
-                        key={lobby.matchId}
-                        className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs font-mono"
-                      >
-                        <div>
-                          <span className="font-bold text-white block">{lobby.hostName}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Stake: <strong className="text-emerald-400">{lobby.stakeAmountEth} NIGHT</strong> • #{lobby.matchCode}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => handleJoinMatch(lobby.matchCode, lobby.matchId)}
-                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg transition shadow cursor-pointer"
-                        >
-                          JOIN & STAKE
-                        </button>
-                      </div>
-                    ))
-                  )}
+                <div className="text-center py-6 text-red-300 text-xs font-sans">
+                  Convex backend unreachable. Ensure <code className="font-mono">npx convex dev</code> is running inside{' '}
+                  <code className="font-mono">frontend/</code>.
                 </div>
               }
             >
-              <RealtimeConvexLobbies onJoinMatch={handleJoinMatch} localLobbies={localLobbies} />
+              <RealtimeConvexLobbies onJoinMatch={handleJoinMatch} />
             </ConvexErrorBoundary>
           </div>
         </div>
