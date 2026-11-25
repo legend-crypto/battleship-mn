@@ -6,7 +6,8 @@ import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { MultiplayerBattle } from './components/MultiplayerBattle';
 import { WhitepaperPage } from './components/WhitepaperPage';
 import { MatchHistoryModal } from './components/MatchHistoryModal';
-import { X, Trophy, Swords, Info, ShieldCheck } from 'lucide-react';
+import { LeaderboardModal } from './components/LeaderboardModal';
+import { X, ShieldCheck } from 'lucide-react';
 import { BATTLESHIP_STAKING_ADDRESS } from './config/contract';
 
 export type GameMode = 'LANDING' | 'LOCAL_AI' | 'MULTIPLAYER_LOBBY' | 'MULTIPLAYER_BATTLE' | 'WHITEPAPER';
@@ -123,116 +124,20 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* MATCHES Modal */}
-      {activeModal === 'MATCHES' && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in font-mono">
-          <div className="bg-[#091015] border border-slate-800 p-6 rounded-3xl max-w-lg w-full text-left shadow-2xl relative">
-            <button
-              onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white p-1 rounded-lg transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-black text-white flex items-center gap-2 mb-1">
-              <Swords className="w-5 h-5 text-emerald-400" />
-              <span>ACTIVE MN MATCHES</span>
-            </h3>
-            <p className="text-xs text-slate-400 mb-4 font-sans">
-              Live on-chain escrow matches on Midnight Network
-            </p>
-
-            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-              <div className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-emerald-400 block">MATCH #BAT824</span>
-                  <span className="text-[10px] text-slate-500">STAKE: 0.10 NIGHT</span>
-                </div>
-                <span className="px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold">
-                  IN PROGRESS
-                </span>
-              </div>
-
-              <div className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-slate-300 block">MATCH #NAV192</span>
-                  <span className="text-[10px] text-slate-500">STAKE: 0.05 NIGHT</span>
-                </div>
-                <span className="px-2.5 py-1 rounded bg-slate-900 text-slate-400 border border-slate-700 text-[10px] font-bold">
-                  WAITING GUEST
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                setActiveModal(null);
-                setMode('MULTIPLAYER_LOBBY');
-              }}
-              className="w-full mt-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition uppercase cursor-pointer"
-            >
-              CREATE OR JOIN MATCH
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* MATCHES HISTORY Modal */}
       {activeModal === 'MATCHES' && (
-        <MatchHistoryModal onClose={() => setActiveModal(null)} />
+        <MatchHistoryModal
+          onClose={() => setActiveModal(null)}
+          onOpenLobby={() => {
+            setActiveModal(null);
+            setMode('MULTIPLAYER_LOBBY');
+          }}
+        />
       )}
 
       {/* LEADERBOARD Modal */}
       {activeModal === 'LEADERBOARD' && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in font-mono">
-          <div className="bg-[#091015] border border-slate-800 p-6 rounded-3xl max-w-lg w-full text-left shadow-2xl relative">
-            <button
-              onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white p-1 rounded-lg transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-black text-white flex items-center gap-2 mb-1">
-              <Trophy className="w-5 h-5 text-amber-400" />
-              <span>COMMANDER LEADERBOARD</span>
-            </h3>
-            <p className="text-xs text-slate-400 mb-4 font-sans">
-              Top strategic admirals on Midnight Network
-            </p>
-
-            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-              <div className="p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                <div className="flex items-center space-x-3">
-                  <span className="font-black text-amber-400 text-sm">#1</span>
-                  <div>
-                    <span className="font-bold text-slate-200 block">0x714A...4A2C</span>
-                    <span className="text-[10px] text-slate-500">14 Wins • 82% Accuracy</span>
-                  </div>
-                </div>
-                <span className="font-bold text-emerald-400">+1.45 NIGHT</span>
-              </div>
-
-              <div className="p-[#050B0E] p-3 bg-[#050B0E] border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                <div className="flex items-center space-x-3">
-                  <span className="font-black text-slate-400 text-sm">#2</span>
-                  <div>
-                    <span className="font-bold text-slate-200 block">0x8B91...91C3</span>
-                    <span className="text-[10px] text-slate-500">11 Wins • 76% Accuracy</span>
-                  </div>
-                </div>
-                <span className="font-bold text-emerald-400">+0.90 NIGHT</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setActiveModal(null)}
-              className="w-full mt-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition border border-slate-700 uppercase cursor-pointer"
-            >
-              CLOSE
-            </button>
-          </div>
-        </div>
+        <LeaderboardModal onClose={() => setActiveModal(null)} />
       )}
 
       {/* ABOUT / DOCS Modal */}

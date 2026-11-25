@@ -1,49 +1,156 @@
 import React from 'react';
-import { X, Trophy, Swords, ExternalLink, ShieldCheck, Flame, Coins } from 'lucide-react';
+import { X, Swords, ExternalLink, Clock, PlusCircle } from 'lucide-react';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
+import { useMidnightWallet } from '../context/MidnightWalletContext';
+import { ConvexErrorBoundary } from './ConvexErrorBoundary';
 
 interface MatchHistoryModalProps {
   onClose: () => void;
+  onOpenLobby?: () => void;
 }
 
-export const MatchHistoryModal: React.FC<MatchHistoryModalProps> = ({ onClose }) => {
-  // Sample match history data on Midnight Preview Network
-  const sampleMatches = [
-    {
-      id: '0xmn_match_849201',
-      code: '#849201',
-      mode: 'Staked Multiplayer',
-      opponent: 'Commander Host (0x714A...4A2C)',
-      result: 'VICTORY',
-      stake: '0.5 NIGHT',
-      potWon: '1.0 NIGHT',
-      date: 'Today, 15:42',
-      txHash: '0xmn_claim_1a05c751c4e'
-    },
-    {
-      id: '0xmn_match_592810',
-      code: '#592810',
-      mode: 'Midnight ZK AI Battle',
-      opponent: 'Midnight ZK Compute Node #MN-9021',
-      result: 'VICTORY',
-      stake: '0.1 NIGHT',
-      potWon: '0.2 NIGHT',
-      date: 'Today, 14:15',
-      txHash: '0xmn_claim_1a05c71e815'
-    },
-    {
-      id: '0xmn_match_301928',
-      code: '#301928',
-      mode: 'Staked Multiplayer',
-      opponent: 'Admiral Bravo (0x8B91...91C3)',
-      result: 'DEFEAT',
-      stake: '1.0 NIGHT',
-      potWon: '0 NIGHT',
-      date: 'Yesterday, 18:30',
-      txHash: '0xmn_tx_301928'
-    }
-  ];
+const MatchesContent: React.FC<{ onOpenLobby?: () => void }> = ({ onOpenLobby }) => {
+  const { address } = useMidnightWallet();
+  const activeMatches = useQuery(api.matches.listActiveMatches);
+  const finishedMatches = useQuery(api.matches.listMatchHistory, { address: address || undefined });
 
+  const isLoading = activeMatches === undefined || finishedMatches === undefined;
+
+  if (isLoading) {
+    return (
+      <div className="py-8 text-center text-xs text-slate-400 font-sans">
+        Loading matches from Convex...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
+      {/* Active Matches */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 uppercase">
+          <span className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <span>ACTIVE LOBBIES & BATTLES ({activeMatches.length})</span>
+          </span>
+          {onOpenLobby && (
+            <button
+              onClick={onOpenLobby}
+              className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>LOBBY</span>
+            </button>
+          )}
+        </div>
+
+        {activeMatches.length === 0 ? (
+          <div className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl text-center text-xs text-slate-500 font-sans">
+            No active multiplayer matches on Convex right now.
+          </div>
+        ) : (
+          activeMatches.map((m: any) => (
+            <div
+              key={m._id}
+              className="p-3.5 bg-[#050B0E] border border-slate-800 rounded-2xl flex items-center justify-between text-xs"
+            >
+              <div>
+                <span className="font-bold text-emerald-400 block">
+                  MATCH #{m.matchCode || m.matchIdBytes32.slice(-6).toUpperCase()}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  STAKE: {m.stakeAmountEth} NIGHT • {m.playerCount || 1}/2 PLAYERS
+                </span>
+              </div>
+              <span className="px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold uppercase">
+                {m.status}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Finished Match History */}
+      <div className="space-y-2.5">
+        <div className="text-[11px] font-bold text-slate-300 uppercase">
+          COMPLETED MATCHES ({finishedMatches.length})
+        </div>
+
+        {finishedMatches.length === 0 ? (
+          <div className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl text-center text-xs text-slate-500 font-sans">
+            No completed matches recorded yet.
+          </div>
+        ) : (
+          finishedMatches.map((match: any) => {
+            const didWin = address && match.winnerAddress === address;
+            const pot = (Number(match.stakeAmountEth) * 2).toFixed(2);
+            const code = match.matchCode || match.matchIdBytes32.slice(-6).toUpperCase();
+            const opponent =
+              address && match.hostAddress === address
+                ? match.guestAddress || 'Unknown'
+                : match.hostAddress;
+
+            return (
+              <div
+                key={match._id}
+                className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl space-y-2 text-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-black px-2.5 py-0.5 rounded uppercase border ${
+                        didWin
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                          : 'bg-slate-900 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {address ? (didWin ? 'VICTORY' : 'DEFEAT') : 'FINISHED'}
+                    </span>
+                    <span className="font-bold text-white">#{code}</span>
+                    <span className="text-[10px] text-slate-500 font-sans">
+                      {new Date(match.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <span className="font-bold text-emerald-400 text-xs">
+                    {pot} NIGHT POT
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-slate-400 text-[11px]">
+                  <span>
+                    Opponent:{' '}
+                    <strong className="text-slate-200">
+                      {opponent.length > 14 ? `${opponent.slice(0, 6)}...${opponent.slice(-4)}` : opponent}
+                    </strong>
+                  </span>
+                  <span>Stake: {match.stakeAmountEth} NIGHT</span>
+                </div>
+
+                {match.payoutTxHash && (
+                  <div className="pt-1 flex justify-end items-center border-t border-slate-800/60">
+                    <a
+                      href={`${MIDNIGHT_TESTNET.blockExplorer}/tx/${match.payoutTxHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-emerald-400 underline font-mono flex items-center gap-1 hover:text-emerald-300"
+                    >
+                      <span>Midnight Explorer</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const MatchHistoryModal: React.FC<MatchHistoryModalProps> = ({ onClose, onOpenLobby }) => {
   return (
     <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in font-mono">
       <div className="bg-[#091015] border border-slate-800 p-6 rounded-3xl max-w-xl w-full text-left shadow-2xl relative space-y-5">
@@ -59,60 +166,34 @@ export const MatchHistoryModal: React.FC<MatchHistoryModalProps> = ({ onClose })
             <Swords className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-              <span>MATCH HISTORY LOG</span>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest">
+              MATCHES &amp; HISTORY
             </h3>
             <p className="text-xs text-slate-400 font-sans">
-              Verified naval battles on Midnight Network (Preview Network)
+              Live Convex match registry &amp; completed Midnight battles
             </p>
           </div>
         </div>
 
-        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-          {sampleMatches.map((match) => (
-            <div
-              key={match.id}
-              className="p-4 bg-[#050B0E] border border-slate-800 rounded-2xl space-y-2 text-xs"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] font-black px-2.5 py-0.5 rounded uppercase border ${
-                      match.result === 'VICTORY'
-                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                        : 'bg-red-950/80 text-red-300 border-red-500/40'
-                    }`}
-                  >
-                    {match.result}
-                  </span>
-                  <span className="font-bold text-white">{match.code}</span>
-                  <span className="text-[10px] text-slate-500 font-sans">({match.date})</span>
-                </div>
-                <span className="font-bold text-emerald-400 text-xs">
-                  {match.result === 'VICTORY' ? `+${match.potWon}` : `- ${match.stake}`}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center text-slate-400 text-[11px]">
-                <span>Opponent: <strong className="text-slate-200">{match.opponent}</strong></span>
-                <span>Mode: <strong className="text-slate-300">{match.mode}</strong></span>
-              </div>
-
-              <div className="pt-1 flex justify-between items-center border-t border-slate-800/60">
-                <span className="text-[10px] text-slate-500 font-mono">Escrow: {match.stake} Wager</span>
-                <a
-                  href={`${MIDNIGHT_TESTNET.blockExplorer}/tx/${match.txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] text-emerald-400 underline font-mono flex items-center gap-1 hover:text-emerald-300"
-                >
-                  <span>Midnight Explorer</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
+        <ConvexErrorBoundary
+          fallback={
+            <div className="p-4 bg-[#050B0E] border border-red-900/50 rounded-2xl text-xs text-red-300 font-sans">
+              Convex backend unreachable. Run <code className="font-mono">npx convex dev</code> inside{' '}
+              <code className="font-mono">frontend/</code> to sync live matches.
             </div>
-          ))}
-        </div>
+          }
+        >
+          <MatchesContent onOpenLobby={onOpenLobby} />
+        </ConvexErrorBoundary>
+
+        {onOpenLobby && (
+          <button
+            onClick={onOpenLobby}
+            className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition uppercase cursor-pointer"
+          >
+            CREATE OR JOIN MATCH
+          </button>
+        )}
       </div>
     </div>
   );

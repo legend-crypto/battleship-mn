@@ -3,7 +3,7 @@ import { Terminal } from 'lucide-react';
 
 export interface LogEntry {
   id: string;
-  sender: 'PLAYER' | 'AI';
+  sender: 'PLAYER' | 'AI' | 'OPPONENT';
   message: string;
   timestamp: string;
   type: 'hit' | 'miss' | 'sunk' | 'info';
