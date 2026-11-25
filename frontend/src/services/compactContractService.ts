@@ -1,4 +1,5 @@
 import { getEnabledLaceApi, getLaceProvider } from '../config/midnightWallet';
+import { BATTLESHIP_CONTRACT_ADDRESS, MIDNIGHT_PROOF_SERVER_URL } from '../config/contract';
 import { CellLeafData, MerkleProof } from '../utils/merkle';
 
 export interface CompactGameRecord {
@@ -14,173 +15,110 @@ export interface CompactGameRecord {
   winner?: string;
 }
 
+/**
+ * Checks whether the local Midnight Proof Server (port 6300) is reachable.
+ */
+export async function checkProofServerHealth(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    const res = await fetch(`${MIDNIGHT_PROOF_SERVER_URL}/health`, {
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export class CompactContractService {
   /**
-   * Universal helper to invoke a Midnight Compact circuit via connected Lace Wallet extension.
-   * STRICT REAL ON-CHAIN MODE: Requires active Lace Wallet approval & RPC broadcast.
+   * Executes a Midnight Compact circuit using the compiled contract interface
+   * + local Proof Server + connected Lace Midnight Wallet.
+   *
+   * NOTE: Does NOT mock transactions or substitute `signData` message signatures
+   * for on-chain extrinsics. Requires `compactc` compilation, a deployed
+   * `VITE_MIDNIGHT_CONTRACT_ADDRESS`, and an active Proof Server on :6300.
    */
   private static async invokeCircuit(circuitName: string, args: any[]): Promise<string> {
-    console.log(`[REAL ON-CHAIN CIRCUIT CALL: ${circuitName}]`, args);
+    if (!BATTLESHIP_CONTRACT_ADDRESS) {
+      throw new Error(
+        `Midnight Contract Not Deployed: VITE_MIDNIGHT_CONTRACT_ADDRESS is empty. ` +
+          `Start Docker Desktop, run "npm run setup:stack --workspace=contracts", compile contracts/compact/battleship.compact with compactc, and deploy it to Midnight Testnet before playing staked matches.`
+      );
+    }
+
+    const proofServerOnline = await checkProofServerHealth();
+    if (!proofServerOnline) {
+      throw new Error(
+        `Midnight Proof Server Offline (${MIDNIGHT_PROOF_SERVER_URL}): Start Docker Desktop and run "npm run setup:stack --workspace=contracts" so ZK-SNARK proofs can be generated locally.`
+      );
+    }
 
     let api = await getEnabledLaceApi();
-    
     if (!api) {
       const rawProvider = getLaceProvider();
-      if (rawProvider && typeof rawProvider.enable === 'function') {
-        try {
-          api = await rawProvider.enable();
-        } catch (e: any) {
-          throw new Error(`Lace Wallet Approval Required: Please approve the connection prompt in your Lace Wallet extension popup (${e?.message || e})`);
-        }
+      if (rawProvider && (typeof rawProvider.connect === 'function' || typeof rawProvider.enable === 'function')) {
+        api =
+          typeof rawProvider.connect === 'function'
+            ? await rawProvider.connect('midnight-testnet-preview')
+            : await rawProvider.enable();
       }
     }
 
     if (!api) {
-      throw new Error('Lace Wallet Required: No active Lace Wallet extension found in your browser. Please install and unlock Lace Wallet to submit on-chain Midnight transactions.');
+      throw new Error(
+        'Lace Wallet Required: Install and unlock the Midnight Lace Wallet extension to sign and submit transactions.'
+      );
     }
 
-    // Ensure all args are formatted primitives or hex strings for circuit payload
-    const sanitizedArgs = args.map(arg => {
-      if (typeof arg === 'object' && arg !== null) {
-        return JSON.stringify(arg);
-      }
-      return String(arg);
-    });
-
-    const payloadObj = {
-      contractAddress: import.meta.env.VITE_MIDNIGHT_CONTRACT_ADDRESS || '0x0d8e9c14664f3757558a5fa5e3304f5c3807f7a6',
-      circuit: circuitName,
-      args: sanitizedArgs,
-      timestamp: Date.now()
-    };
-    const payloadStr = JSON.stringify(payloadObj);
-    const payloadHex = Array.from(new TextEncoder().encode(payloadStr))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    let txHash: string | undefined;
-
-    // 1. Direct native circuit methods on Midnight extension API
+    // Native Midnight DApp Connector / compiled Midnight.js contract hooks
     if (typeof api.submitCircuit === 'function') {
-      txHash = await api.submitCircuit(circuitName, sanitizedArgs);
-    } else if (typeof api.executeCircuit === 'function') {
-      txHash = await api.executeCircuit(circuitName, sanitizedArgs);
-    } else if (typeof api.callCircuit === 'function') {
-      txHash = await api.callCircuit(circuitName, sanitizedArgs);
-    } else if (api.midnight && typeof api.midnight.submitCircuit === 'function') {
-      txHash = await api.midnight.submitCircuit(circuitName, sanitizedArgs);
-    } else if (api.compact && typeof api.compact.submitCircuit === 'function') {
-      txHash = await api.compact.submitCircuit(circuitName, sanitizedArgs);
-    } else if (api.experimental && typeof api.experimental.submitTx === 'function') {
-      txHash = await api.experimental.submitTx(payloadHex);
+      return await api.submitCircuit(circuitName, args);
+    }
+    if (api.midnight && typeof api.midnight.submitCircuit === 'function') {
+      return await api.midnight.submitCircuit(circuitName, args);
+    }
+    if (api.compact && typeof api.compact.submitCircuit === 'function') {
+      return await api.compact.submitCircuit(circuitName, args);
     }
 
-    // 2. CIP-30 / Lace Wallet Provider standard transaction signing popup
-    // Use signData FIRST for payload message signing to prevent Lace CBOR deserialization error ("We encountered an error")
-    if (!txHash) {
-      if (typeof api.signData === 'function') {
-        try {
-          const usedAddresses = (await api.getUsedAddresses?.()) || (await api.getUnusedAddresses?.()) || [];
-          const addr = usedAddresses[0] || '0x';
-          console.log(`[LACE SIGN_DATA PROMPT] Requesting user signature for address: ${addr}`);
-          const signature = await api.signData(addr, payloadHex);
-          if (signature) {
-            const sigHex = typeof signature === 'string' 
-              ? signature 
-              : signature.signature || signature.key || JSON.stringify(signature);
-            txHash = sigHex.startsWith('0x') ? sigHex : `0x${sigHex.substring(0, 64)}`;
-          }
-        } catch (err: any) {
-          console.warn('Lace signData prompt warning:', err?.message || err);
-          if (err?.message && (err.message.includes('declined') || err.message.includes('rejected') || err.message.includes('User cancel') || err.message.includes('Refused'))) {
-            throw new Error(`Transaction Cancelled: You rejected the transaction signature in Lace Wallet.`);
-          }
-        }
-      }
-
-      if (!txHash && typeof api.signTx === 'function') {
-        try {
-          const witness = await api.signTx(payloadHex, true);
-          if (witness && typeof witness === 'string') txHash = witness;
-        } catch (err: any) {
-          console.warn('Lace signTx prompt warning:', err?.message || err);
-          if (err?.message && (err.message.includes('declined') || err.message.includes('rejected') || err.message.includes('User cancel') || err.message.includes('Refused'))) {
-            throw new Error(`Transaction Cancelled: You rejected the transaction signature in Lace Wallet.`);
-          }
-        }
-      }
-
-      if (!txHash && typeof api.submitTx === 'function') {
-        try {
-          txHash = await api.submitTx(payloadHex);
-        } catch (err: any) {
-          console.warn('Lace submitTx prompt warning:', err?.message || err);
-        }
-      }
-    }
-
-    // 3. Broadcast real transaction payload to Midnight Testnet RPC node
-    if (!txHash || typeof txHash !== 'string') {
-      console.log('📡 Broadcasting transaction payload to Midnight RPC Node...');
-      try {
-        const rpcUrl = import.meta.env.VITE_MIDNIGHT_TESTNET_RPC || 'https://rpc.preview.midnight.network';
-        const response = await fetch(rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: Date.now(),
-            method: 'author_submitExtrinsic',
-            params: [`0x${payloadHex}`]
-          })
-        });
-        const resJson = await response.json();
-        if (resJson.result && typeof resJson.result === 'string') {
-          txHash = resJson.result;
-        } else if (resJson.error) {
-          throw new Error(`Midnight Node Error: ${resJson.error.message || JSON.stringify(resJson.error)}`);
-        }
-      } catch (nodeErr: any) {
-        console.warn('Midnight Node RPC direct broadcast response:', nodeErr?.message || nodeErr);
-      }
-    }
-
-    if (!txHash) {
-      throw new Error(`On-Chain Execution Failed: Unable to obtain valid transaction signature from Lace Wallet. Please ensure Lace Wallet is connected and unlocked.`);
-    }
-
-    console.log(`✅ [REAL MIDNIGHT TESTNET TRANSACTION BROADCASTED]: ${circuitName} => ${txHash}`);
-    return txHash;
+    throw new Error(
+      `Compiled Midnight.js Contract Bindings Missing: Lace Wallet connected and Proof Server is online, ` +
+        `but @midnight-ntwrk/midnight-js-contracts compiled artifacts from compactc have not been generated and wired into CompactContractService yet (cannot execute "${circuitName}").`
+    );
   }
 
-  /**
-   * Invokes create_game circuit on BattleshipStaking.compact via Lace wallet provider.
-   * Host deposits stakeAmountNight into contract-held escrow. (Gas paid in DUST).
-   */
-  static async createGame(gameIdBytes32: string, boardCommitment: string, stakeAmountNight: string = '0.1'): Promise<string> {
-    return this.invokeCircuit('create_game', [gameIdBytes32, boardCommitment, stakeAmountNight]);
+  static async createGame(
+    gameIdBytes32: string,
+    boardCommitment: string,
+    stakeAmountNight: string = '0.1'
+  ): Promise<string> {
+    return this.invokeCircuit('create_game', [
+      gameIdBytes32,
+      boardCommitment,
+      stakeAmountNight,
+      Math.floor(Date.now() / 1000)
+    ]);
   }
 
-  /**
-   * Invokes join_game circuit on BattleshipStaking.compact via Lace wallet provider.
-   * Guest deposits equal stakeAmountNight into contract-held escrow (2x pot total). (Gas paid in DUST).
-   */
   static async joinGame(gameIdBytes32: string, boardCommitment: string): Promise<string> {
-    return this.invokeCircuit('join_game', [gameIdBytes32, boardCommitment]);
+    return this.invokeCircuit('join_game', [
+      gameIdBytes32,
+      boardCommitment,
+      Math.floor(Date.now() / 1000)
+    ]);
   }
 
-  /**
-   * Invokes fire_shot circuit on BattleshipStaking.compact via Lace wallet provider.
-   * Firing player submits target coordinate (0..99) enforcing turn order. (Gas paid in DUST).
-   */
   static async fireShot(gameIdBytes32: string, targetCoord: number): Promise<string> {
-    return this.invokeCircuit('fire_shot', [gameIdBytes32, targetCoord]);
+    return this.invokeCircuit('fire_shot', [
+      gameIdBytes32,
+      targetCoord,
+      Math.floor(Date.now() / 1000)
+    ]);
   }
 
-  /**
-   * Invokes resolve_shot circuit on BattleshipStaking.compact via Lace wallet provider.
-   * Defending player submits ZK Merkle inclusion/exclusion path proof verifying shot outcome. (Gas paid in DUST).
-   */
   static async resolveShot(
     gameIdBytes32: string,
     targetCoord: number,
@@ -188,29 +126,24 @@ export class CompactContractService {
     leaf: CellLeafData,
     proof: MerkleProof
   ): Promise<string> {
-    return this.invokeCircuit('resolve_shot', [gameIdBytes32, targetCoord, isHit, leaf, proof]);
+    return this.invokeCircuit('resolve_shot', [
+      gameIdBytes32,
+      targetCoord,
+      isHit,
+      leaf,
+      proof,
+      Math.floor(Date.now() / 1000)
+    ]);
   }
 
-  /**
-   * Invokes claim_winner_payout circuit on BattleshipStaking.compact.
-   * Verified winner receives 100% of 2x escrow pot in NIGHT tokens. (Gas paid in DUST).
-   */
   static async claimWinnerPayout(gameIdBytes32: string): Promise<string> {
     return this.invokeCircuit('claim_winner_payout', [gameIdBytes32]);
   }
 
-  /**
-   * Invokes claim_timeout_victory circuit on BattleshipStaking.compact.
-   * If opponent goes offline mid-game for >60s, active player claims victory and 2x pot in NIGHT tokens.
-   */
   static async claimTimeoutVictory(gameIdBytes32: string): Promise<string> {
     return this.invokeCircuit('claim_timeout_victory', [gameIdBytes32]);
   }
 
-  /**
-   * Invokes emergency_refund circuit on BattleshipStaking.compact.
-   * If match is stuck for >3600s (1 hour), players reclaim original deposited NIGHT stake.
-   */
   static async emergencyRefund(gameIdBytes32: string): Promise<string> {
     return this.invokeCircuit('emergency_refund', [gameIdBytes32]);
   }
