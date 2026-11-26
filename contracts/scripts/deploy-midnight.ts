@@ -322,7 +322,7 @@ async function main() {
     { WalletSeeds },
     { ShieldedWallet },
     { UnshieldedWallet, PublicKey, createKeystore },
-    { DustWallet, CustomForkingDustWallet, dustVariantConfigurations, dustWalletProbes },
+    { DustWallet, CustomForkingDustWallet, dustVariantConfigurations, dustWalletProbes, isInsufficientDustForFeeError },
     dustV1,
     dustV2,
     { InMemoryTransactionHistoryStorage },
@@ -447,13 +447,13 @@ async function main() {
       `\nUnshielded & Shielded synced: NIGHT=${formatBalances(unshieldedEarly.balances)} (${unshieldedEarly.availableCoins.length} UTXOs), Shielded=${formatBalances(shieldedEarly.balances)}`
     );
 
-    const synced = await facade.waitForSyncedState().finally(() => progressSub.unsubscribe());
+    let activeState = await facade.waitForSyncedState().finally(() => progressSub.unsubscribe());
 
     const unshieldedAddr = keystore.getBech32Address().toString();
-    const shieldedAddr = MidnightBech32m.encode(endpoints.networkId, synced.shielded.address).toString();
-    const dustAddr = MidnightBech32m.encode(endpoints.networkId, synced.dust.address).toString();
-    const dustBalance = synced.dust.balance(new Date());
-    const registeredCount = synced.unshielded.availableCoins.filter(
+    const shieldedAddr = MidnightBech32m.encode(endpoints.networkId, activeState.shielded.address).toString();
+    const dustAddr = MidnightBech32m.encode(endpoints.networkId, activeState.dust.address).toString();
+    let dustBalance = activeState.dust.balance(new Date());
+    const registeredCount = activeState.unshielded.availableCoins.filter(
       (c: { meta: { registeredForDustGeneration: boolean } }) => c.meta.registeredForDustGeneration
     ).length;
 
@@ -461,14 +461,69 @@ async function main() {
     console.log(`Unshielded Addr : ${unshieldedAddr}`);
     console.log(`Shielded Addr   : ${shieldedAddr}`);
     console.log(`Dust Addr       : ${dustAddr}`);
-    console.log(`Protocol Epoch  : ${synced.activeProtocolVersion.toString()}`);
-    console.log(`Unshielded Bal  : ${formatBalances(synced.unshielded.balances)} (${synced.unshielded.availableCoins.length} UTXOs, ${registeredCount} registered for DUST)`);
-    console.log(`Shielded Bal    : ${formatBalances(synced.shielded.balances)} (${synced.shielded.availableCoins.length} coins)`);
-    console.log(`DUST Balance    : ${dustBalance.toString()} Specks (${synced.dust.availableCoins.length} dust UTXOs)`);
+    console.log(`Protocol Epoch  : ${activeState.activeProtocolVersion.toString()}`);
+    console.log(`Unshielded Bal  : ${formatBalances(activeState.unshielded.balances)} (${activeState.unshielded.availableCoins.length} UTXOs, ${registeredCount} registered for DUST)`);
+    console.log(`Shielded Bal    : ${formatBalances(activeState.shielded.balances)} (${activeState.shielded.availableCoins.length} coins)`);
+    console.log(`DUST Balance    : ${dustBalance.toString()} Specks (${activeState.dust.availableCoins.length} dust UTXOs)`);
 
     if (checkOnly) {
       console.log('\nBalance check completed (--check / --balance-only).');
       return;
+    }
+
+    if (dustBalance <= 0n && activeState.unshielded.availableCoins.length > 0) {
+      const unregisteredNight = activeState.unshielded.availableCoins.filter(
+        (c: { meta: { registeredForDustGeneration: boolean }; utxo: { type: string } }) =>
+          !c.meta.registeredForDustGeneration && /^0+$/.test(c.utxo.type)
+      );
+      const nightToRegister =
+        unregisteredNight.length > 0
+          ? unregisteredNight
+          : activeState.unshielded.availableCoins.filter(
+              (c: { meta: { registeredForDustGeneration: boolean } }) =>
+                !c.meta.registeredForDustGeneration
+            );
+
+      if (nightToRegister.length > 0) {
+        console.log(
+          `\nFound ${nightToRegister.length} unregistered tNIGHT UTXO(s) and 0 DUST — registering for DUST generation...`
+        );
+        const register = () =>
+          facade.registerNightUtxosForDustGeneration(
+            nightToRegister as any,
+            activeState.unshielded.verifyingKey,
+            (data: Uint8Array) => keystore.signDataAsync(data)
+          );
+
+        const regRecipe = await register().catch(async (error: unknown) => {
+          if (!isInsufficientDustForFeeError(error) || error.estimate._tag !== 'Reachable') {
+            throw error;
+          }
+          const waitSecs = Number(error.estimate.seconds);
+          const timeoutMs = Math.max(120_000, waitSecs * 1000 + 60_000);
+          console.log(
+            `Waiting ~${waitSecs}s for retroactive DUST generation to cover registration fee (${error.fee.toString()} Specks)...`
+          );
+          await facade.waitForGeneratedDust(nightToRegister as any, error.fee, { timeoutMs });
+          return register();
+        });
+
+        const finalizedReg = await facade.finalizeRecipe(regRecipe);
+        const regTxId = await facade.submitTransaction(finalizedReg);
+        console.log(`NIGHT -> DUST registration submitted (tx=${regTxId}).`);
+      }
+
+      console.log('Waiting for registered NIGHT UTXOs to accrue DUST on-chain...');
+      const deadline = Date.now() + 180_000;
+      while (Date.now() < deadline) {
+        activeState = await facade.waitForSyncedState();
+        dustBalance = activeState.dust.balance(new Date());
+        if (dustBalance >= 500_000_000_000_000n || (activeState.dust.availableCoins.length > 0 && dustBalance > 0n)) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 4000));
+      }
+      console.log(`Updated DUST Bal: ${dustBalance.toString()} Specks (${activeState.dust.availableCoins.length} dust UTXOs)`);
     }
 
     if (dustBalance <= 0n) {
@@ -509,8 +564,8 @@ async function main() {
     publicDataProvider = indexerPublicDataProvider(endpoints.indexerUrl, endpoints.indexerWsUrl);
     const proofProvider = httpClientProofProvider(endpoints.proofServerUrl, zkConfigProvider);
 
-    const coinPublicKeyHex = synced.shielded.coinPublicKey.toHexString();
-    const encryptionPublicKeyHex = synced.shielded.encryptionPublicKey.toHexString();
+    const coinPublicKeyHex = activeState.shielded.coinPublicKey.toHexString();
+    const encryptionPublicKeyHex = activeState.shielded.encryptionPublicKey.toHexString();
     const privateStatePassword =
       process.env.MIDNIGHT_PRIVATE_STATE_PASSWORD ||
       `Mn#${crypto.randomBytes(18).toString('hex')}A9!`;
