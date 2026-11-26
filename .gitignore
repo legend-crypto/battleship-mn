@@ -10,6 +10,7 @@ artifacts/
 cache/
 typechain-types/
 contracts/managed/**/keys/
+contracts/.midnight-level-db/
 *.tsbuildinfo
 
 # Environment files & secrets
