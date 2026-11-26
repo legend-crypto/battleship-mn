@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { MIDNIGHT_TESTNET, getLaceProvider, setEnabledLaceApi } from '../config/midnightWallet';
+import {
+  ACTIVE_MIDNIGHT_NETWORK,
+  getLaceProvider,
+  setEnabledLaceApi,
+} from '../config/midnightWallet';
 
 interface MidnightWalletContextType {
   address: string | null;
@@ -16,12 +20,18 @@ const MidnightWalletContext = createContext<MidnightWalletContextType>({
   address: null,
   isConnected: false,
   isConnecting: false,
-  networkName: MIDNIGHT_TESTNET.name,
+  networkName: ACTIVE_MIDNIGHT_NETWORK.name,
   balance: { formatted: '--', symbol: 'NIGHT' },
   connect: async () => {},
   disconnect: () => {},
   error: null,
 });
+
+function formatAtomicNight(raw: bigint): string {
+  const whole = raw / 1_000_000n;
+  const frac = (raw % 1_000_000n).toString().padStart(6, '0').slice(0, 2);
+  return `${whole}.${frac}`;
+}
 
 export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [address, setAddress] = useState<string | null>(() => localStorage.getItem('midnight_connected_address'));
@@ -32,6 +42,25 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
 
   const syncBalanceFromApi = useCallback(async (api: any) => {
     try {
+      // DApp Connector API v4 unshielded/shielded balances
+      if (typeof api?.getUnshieldedBalances === 'function') {
+        const unshielded = await api.getUnshieldedBalances();
+        const values = Object.values(unshielded || {}) as Array<bigint | string | number>;
+        if (values.length > 0) {
+          const total = values.reduce<bigint>((acc, v) => acc + BigInt(v), 0n);
+          setBalanceFormatted(formatAtomicNight(total));
+          return;
+        }
+      }
+      if (typeof api?.getShieldedBalances === 'function') {
+        const shielded = await api.getShieldedBalances();
+        const values = Object.values(shielded || {}) as Array<bigint | string | number>;
+        if (values.length > 0) {
+          const total = values.reduce<bigint>((acc, v) => acc + BigInt(v), 0n);
+          setBalanceFormatted(formatAtomicNight(total));
+          return;
+        }
+      }
       if (typeof api?.state === 'function') {
         const walletState = await api.state();
         if (walletState?.balances && typeof walletState.balances === 'object') {
@@ -61,11 +90,20 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
       return;
     }
     const lace = getLaceProvider();
-    if (lace && typeof lace.enable === 'function') {
-      lace.enable().then((api: any) => {
-        setEnabledLaceApi(api);
-        syncBalanceFromApi(api);
-      }).catch(() => {});
+    if (!lace) return;
+    const init =
+      typeof lace.connect === 'function'
+        ? lace.connect(ACTIVE_MIDNIGHT_NETWORK.id)
+        : typeof lace.enable === 'function'
+        ? lace.enable()
+        : null;
+    if (init) {
+      init
+        .then((api: any) => {
+          setEnabledLaceApi(api);
+          syncBalanceFromApi(api);
+        })
+        .catch(() => {});
     }
   }, [isConnected, syncBalanceFromApi]);
 
@@ -83,13 +121,22 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
         throw new Error(errMsg);
       }
 
-      const api = typeof lace.connect === 'function'
-        ? await lace.connect(MIDNIGHT_TESTNET.id)
-        : await lace.enable();
+      const api =
+        typeof lace.connect === 'function'
+          ? await lace.connect(ACTIVE_MIDNIGHT_NETWORK.id)
+          : await lace.enable();
       setEnabledLaceApi(api);
 
       let userAddress: string | undefined;
-      if (typeof api.state === 'function') {
+      if (typeof api.getUnshieldedAddress === 'function') {
+        const res = await api.getUnshieldedAddress();
+        userAddress = res?.unshieldedAddress;
+      }
+      if (!userAddress && typeof api.getShieldedAddresses === 'function') {
+        const res = await api.getShieldedAddresses();
+        userAddress = res?.shieldedAddress;
+      }
+      if (!userAddress && typeof api.state === 'function') {
         const st = await api.state();
         userAddress = st?.address;
       }
@@ -121,6 +168,7 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
   const disconnect = () => {
     setAddress(null);
     setIsConnected(false);
+    setEnabledLaceApi(null);
     setBalanceFormatted('0.00');
     setError(null);
     localStorage.removeItem('midnight_connected_address');
@@ -132,7 +180,7 @@ export const MidnightWalletProvider: React.FC<{ children: React.ReactNode }> = (
         address,
         isConnected,
         isConnecting,
-        networkName: MIDNIGHT_TESTNET.name,
+        networkName: ACTIVE_MIDNIGHT_NETWORK.name,
         balance: { formatted: balanceFormatted, symbol: 'NIGHT' },
         connect,
         disconnect,

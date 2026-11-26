@@ -11,6 +11,9 @@ export const BATTLESHIP_STAKING_ADDRESS =
 export const MIDNIGHT_PROOF_SERVER_URL =
   import.meta.env.VITE_MIDNIGHT_PROOF_SERVER_URL || 'http://127.0.0.1:6300';
 
+export const MIDNIGHT_ZK_ASSETS_URL =
+  import.meta.env.VITE_MIDNIGHT_ZK_ASSETS_URL || '/midnight-zk';
+
 export const COMPACT_CIRCUITS = {
   createGame: 'create_game',
   cancelWaitingGame: 'cancel_waiting_game',

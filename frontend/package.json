@@ -6,11 +6,22 @@
   "scripts": {
     "dev": "npx vite",
     "build": "npx vite build",
-    "preview": "npx vite preview"
+    "preview": "npx vite preview",
+    "test": "npx vitest run"
   },
   "dependencies": {
     "@battleship/shared": "file:../shared",
     "@midnight-ntwrk/compact-runtime": "^0.21.0",
+    "@midnight-ntwrk/dapp-connector-api": "^4.1.0",
+    "@midnight-ntwrk/midnight-js-contracts": "^5.0.1",
+    "@midnight-ntwrk/midnight-js-fetch-zk-config-provider": "^5.0.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "^5.0.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "^5.0.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "^5.0.1",
+    "@midnight-ntwrk/midnight-js-network-id": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "^5.0.1",
+    "@midnightntwrk/ledger-v9": "^1.0.2",
+    "@midnightntwrk/wallet-sdk-address-format": "^4.0.1",
     "@tanstack/react-query": "^5.50.0",
     "clsx": "^2.1.1",
     "convex": "^1.18.0",
@@ -29,6 +40,7 @@
     "typescript": "^5.4.5",
     "vite": "^5.3.1",
     "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.6.0"
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^1.6.1"
   }
 }
