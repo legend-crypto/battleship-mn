@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, ExternalLink, ShieldCheck, Cpu, Lock, Coins, FileText, CheckCircle2, Target, ArrowLeft } from 'lucide-react';
-import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
+import { X, ExternalLink, ShieldCheck, Cpu, Lock, Coins, FileText, Target } from 'lucide-react';
+import { ACTIVE_MIDNIGHT_NETWORK } from '../config/midnightWallet';
+import { BATTLESHIP_CONTRACT_ADDRESS, BATTLESHIP_STAKING_COMPACT_NAME } from '../config/contract';
 
 interface WhitepaperModalProps {
   onClose: () => void;
@@ -42,7 +43,7 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
               <span>EXECUTIVE SUMMARY</span>
             </h3>
             <p>
-              <strong>Battleship MN</strong> is a Web3-native tactical naval strategy game powered by <strong>Midnight Network</strong>. It combines a framework-agnostic 10x10 grid Battleship engine, Compact smart contracts for private-state commitments, zero-knowledge hit/miss resolution proofs, and on-chain escrow staking (<code className="text-emerald-400">BattleshipStaking.compact</code>).
+              <strong>Battleship MN</strong> is a Web3-native tactical naval strategy game powered by <strong>Midnight Network</strong>. It combines a framework-agnostic 10x10 grid Battleship engine, Compact smart contracts for private-state commitments, zero-knowledge hit/miss resolution proofs, and on-chain escrow staking (<code className="text-emerald-400">{BATTLESHIP_STAKING_COMPACT_NAME}</code>).
             </p>
             <div className="grid sm:grid-cols-2 gap-3 pt-2 font-mono text-[11px]">
               <div className="p-3 bg-[#091015] rounded-xl border border-slate-800/80">
@@ -118,12 +119,12 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
             </h3>
 
             <div className="bg-[#050B0E] p-4 rounded-xl border border-slate-800 space-y-2 font-mono text-[11px]">
-              <span className="text-emerald-400 font-bold block">Compact ZK Circuit Commitment Scheme:</span>
+              <span className="text-emerald-400 font-bold block">In-Circuit Compact Merkle Verification:</span>
               <div className="p-3 bg-[#091015] rounded-lg border border-slate-800 text-slate-300 font-mono text-[10px] overflow-x-auto">
-                verify_hit_proof(boardCommitment, targetPos, resultHash) -&gt; zkpResult
+                resolve_shot(game_id, target_coord, is_hit, leaf, proof, current_timestamp) -&gt; Void
               </div>
               <p className="font-sans text-xs text-slate-400">
-                Off-chain game moves occur with zero per-turn gas fees while generating ZK-SNARK proofs verifying hit/miss accuracy against private board commitments.
+                `resolve_shot` verifies the 7-step SHA-256/persistentHash Merkle proof inside the Compact circuit against the defender's committed board root while enforcing replay protection via `fired_shots`.
               </p>
             </div>
           </section>
@@ -135,25 +136,35 @@ export const WhitepaperModal: React.FC<WhitepaperModalProps> = ({ onClose }) => 
               <span>4. MIDNIGHT NETWORK DEPLOYMENT DETAILS</span>
             </h3>
 
-            <div className="grid sm:grid-cols-2 gap-3 font-mono text-[11px]">
+            <div className="grid sm:grid-cols-3 gap-3 font-mono text-[11px]">
               <div>
                 <span className="text-slate-500 block">Escrow Smart Contract:</span>
-                <span className="text-white font-bold text-xs break-all">BattleshipStaking.compact</span>
+                <span className="text-white font-bold text-xs break-all">{BATTLESHIP_STAKING_COMPACT_NAME}</span>
               </div>
               <div>
-                <span className="text-slate-500 block">Target Network:</span>
-                <span className="text-emerald-400 font-bold">Midnight Network</span>
+                <span className="text-slate-500 block">Active Network:</span>
+                <span className="text-emerald-400 font-bold">{ACTIVE_MIDNIGHT_NETWORK.name}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Contract Address:</span>
+                <span className="text-slate-200 font-bold break-all">
+                  {BATTLESHIP_CONTRACT_ADDRESS || 'Pending compactc deploy'}
+                </span>
               </div>
             </div>
 
             <div className="pt-2">
               <a
-                href="https://explorer.midnight.network"
+                href={
+                  BATTLESHIP_CONTRACT_ADDRESS
+                    ? `${ACTIVE_MIDNIGHT_NETWORK.blockExplorer}/contract/${BATTLESHIP_CONTRACT_ADDRESS}`
+                    : ACTIVE_MIDNIGHT_NETWORK.blockExplorer
+                }
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 underline hover:text-emerald-300"
               >
-                <span>View Verified Contract on Midnight Explorer</span>
+                <span>Open {ACTIVE_MIDNIGHT_NETWORK.shortLabel} Explorer</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>

@@ -213,7 +213,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartLocalAI, onStar
               </div>
               <h4 className="font-mono text-sm font-black text-slate-900 uppercase">MIDNIGHT COMPACT ESCROW</h4>
               <p className="text-xs text-slate-600 font-sans leading-relaxed">
-                On-chain privacy-preserving Compact smart contract escrow (`BattleshipStaking.compact`).
+                On-chain privacy-preserving Compact smart contract escrow (<code className="text-emerald-700">battleship.compact</code>).
               </p>
             </div>
 

@@ -1,7 +1,7 @@
 import React from 'react';
-import { ArrowLeft, ExternalLink, ShieldCheck, Cpu, Lock, Coins, FileText, CheckCircle2, Target, BookOpen, Layers, Terminal } from 'lucide-react';
-import { MIDNIGHT_TESTNET } from '../config/midnightWallet';
-import { BATTLESHIP_STAKING_ADDRESS } from '../config/contract';
+import { ArrowLeft, ExternalLink, ShieldCheck, Cpu, Lock, FileText, Target, BookOpen } from 'lucide-react';
+import { ACTIVE_MIDNIGHT_NETWORK } from '../config/midnightWallet';
+import { BATTLESHIP_CONTRACT_ADDRESS, BATTLESHIP_STAKING_COMPACT_NAME } from '../config/contract';
 
 interface WhitepaperPageProps {
   onBackToHome: () => void;
@@ -31,7 +31,7 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
         </div>
 
         <a
-          href="https://explorer.midnight.network"
+          href={ACTIVE_MIDNIGHT_NETWORK.blockExplorer}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition"
@@ -66,10 +66,10 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
                 Author: <strong className="text-emerald-400">Battleship MN Team</strong>
               </span>
               <span className="bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
-                Network: <strong className="text-emerald-400">Midnight Network</strong>
+                Network: <strong className="text-emerald-400">{ACTIVE_MIDNIGHT_NETWORK.name}</strong>
               </span>
               <span className="bg-[#050B0E] px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
-                Contract: <strong className="text-slate-200">BattleshipStaking.compact</strong>
+                Contract: <strong className="text-slate-200">{BATTLESHIP_STAKING_COMPACT_NAME}</strong>
               </span>
             </div>
           </div>
@@ -83,7 +83,7 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
           </h2>
           <div className="text-xs sm:text-sm font-sans text-slate-300 leading-relaxed space-y-3">
             <p>
-              <strong>Battleship MN</strong> is a Web3-native tactical naval strategy game powered by <strong>Midnight Network</strong>. It combines a framework-agnostic 10x10 grid Battleship engine, Compact smart contracts for private-state commitments, zero-knowledge hit/miss resolution proofs, and on-chain escrow staking (<code className="text-emerald-400">BattleshipStaking.compact</code>).
+              <strong>Battleship MN</strong> is a Web3-native tactical naval strategy game powered by <strong>Midnight Network</strong>. It combines a framework-agnostic 10x10 grid Battleship engine, Compact smart contracts for private-state commitments, zero-knowledge hit/miss resolution proofs, and on-chain escrow staking (<code className="text-emerald-400">{BATTLESHIP_STAKING_COMPACT_NAME}</code>).
             </p>
             <p>
               Players can engage in two distinct game modes:
@@ -202,9 +202,9 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
               To ensure absolute privacy and prevent cheating, game moves generate zero-knowledge proofs verifying hit/miss accuracy against stored board commitments without revealing unshot ship locations:
             </p>
             <div className="p-4 bg-[#050B0E] rounded-2xl border border-emerald-500/40 font-mono text-xs space-y-2">
-              <span className="text-emerald-400 font-bold block">Compact ZK Circuit Commitment:</span>
+              <span className="text-emerald-400 font-bold block">Compact In-Circuit Merkle Verification:</span>
               <div className="p-3 bg-[#091015] rounded-xl border border-slate-800 text-slate-200 text-[11px] overflow-x-auto">
-                verify_hit_proof(boardCommitment, targetPos, resultHash) -&gt; zkpResult
+                resolve_shot(game_id, target_coord, is_hit, leaf, proof, current_timestamp) -&gt; Void
               </div>
             </div>
           </div>
@@ -217,25 +217,35 @@ export const WhitepaperPage: React.FC<WhitepaperPageProps> = ({ onBackToHome }) 
             <span>4. MIDNIGHT NETWORK CONTRACT SPECIFICATIONS</span>
           </h2>
 
-          <div className="grid sm:grid-cols-2 gap-4 font-mono text-xs">
+          <div className="grid sm:grid-cols-3 gap-4 font-mono text-xs">
             <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
               <span className="text-slate-500 block mb-1">Escrow Contract:</span>
-              <span className="text-white font-bold text-xs break-all">BattleshipStaking.compact</span>
+              <span className="text-white font-bold text-xs break-all">{BATTLESHIP_STAKING_COMPACT_NAME}</span>
             </div>
             <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
-              <span className="text-slate-500 block mb-1">Target Network:</span>
-              <span className="text-emerald-400 font-bold">Midnight Network</span>
+              <span className="text-slate-500 block mb-1">Active Network:</span>
+              <span className="text-emerald-400 font-bold">{ACTIVE_MIDNIGHT_NETWORK.name}</span>
+            </div>
+            <div className="p-4 bg-[#050B0E] rounded-2xl border border-slate-800">
+              <span className="text-slate-500 block mb-1">Configured Address:</span>
+              <span className="text-slate-200 font-bold break-all">
+                {BATTLESHIP_CONTRACT_ADDRESS || 'Pending compactc deploy'}
+              </span>
             </div>
           </div>
 
           <div className="pt-2">
             <a
-              href={MIDNIGHT_TESTNET.blockExplorer}
+              href={
+                BATTLESHIP_CONTRACT_ADDRESS
+                  ? `${ACTIVE_MIDNIGHT_NETWORK.blockExplorer}/contract/${BATTLESHIP_CONTRACT_ADDRESS}`
+                  : ACTIVE_MIDNIGHT_NETWORK.blockExplorer
+              }
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 underline hover:text-emerald-300"
             >
-              <span>View Verified Contract on Midnight Explorer</span>
+              <span>Open {ACTIVE_MIDNIGHT_NETWORK.shortLabel} Explorer</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>

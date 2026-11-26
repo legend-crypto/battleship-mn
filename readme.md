@@ -3,30 +3,30 @@
 **Decentralized Zero-Knowledge Naval Strategy & Token Staking Protocol on Midnight Network**
 
 [![Midnight Network](https://img.shields.io/badge/Chain-Midnight_Network-blueviolet?style=for-the-badge)](https://preview.midnightexplorer.com)
-[![Compact Language](https://img.shields.io/badge/Smart_Contract-Compact_v0.14-emerald?style=for-the-badge)](https://preview.midnightexplorer.com/contract/0x0d8e9c14664f3757558a5fa5e3304f5c3807f7a6)
-[![Vercel Deployment](https://img.shields.io/badge/Frontend-Vercel_Deployed-black?style=for-the-badge)](https://vercel.com)
+[![Compact Language](https://img.shields.io/badge/Smart_Contract-Compact_v0.14-emerald?style=for-the-badge)](contracts/compact/battleship.compact)
+[![Convex Realtime](https://img.shields.io/badge/Realtime_Sync-Convex-orange?style=for-the-badge)](frontend/convex/schema.ts)
 [![Docker Proof Server](https://img.shields.io/badge/Docker-Proof_Server_6300-blue?style=for-the-badge)](SETUP.md)
 
-A classic 10x10 Battleship strategy game reimagined with real-time multiplayer, a tactical ZK AI opponent, and privacy-preserving on-chain token wagers powered by Midnight Compact smart contracts (`BattleshipStaking.compact`).
+A classic 10×10 Battleship strategy game built with real-time Convex multiplayer sync, an offline tactical fog-of-war AI opponent, client-side Merkle commitments, and a hardened Midnight Compact escrow specification ([`battleship.compact`](contracts/compact/battleship.compact)).
 
 ---
 
 ## 📖 Quick Links
 
-- [🚀 Quick Setup Guide (`SETUP.md`)](SETUP.md) — Step-by-step instructions for Docker Proof Server, node environment, & local running.
-- [📜 Technical Whitepaper (`WHITEPAPER.md`)](WHITEPAPER.md) — Comprehensive protocol architecture, Merkle tree math, and Compact circuit specifications.
-- [🌐 Midnight Block Explorer](https://preview.midnightexplorer.com) — View live testnet blocks, extrinsics, and transaction hashes.
+- [🚀 Quick Setup Guide (`SETUP.md`)](SETUP.md) — Instructions for Docker Proof Server, Convex, & local dev.
+- [📜 Technical Whitepaper (`WHITEPAPER.md`)](WHITEPAPER.md) — Protocol architecture, Merkle proofs, and Compact circuits.
+- [🛡️ Mainnet Readiness Guide (`MAINNET.md`)](MAINNET.md) — Network environments (Preview Testnet → Preprod → Mainnet) and pre-mainnet checklist.
+- [🌐 Midnight Preview Explorer](https://preview.midnightexplorer.com) — View testnet blocks and transactions.
 
 ---
 
 ## 🎮 Key Features
 
-- **On-Chain Token Escrow Staking** — Players stake equal NIGHT wagers before a match. The winner claims 100% of the $2\times$ pooled pot directly from contract escrow upon verified victory.
-- **Zero-Knowledge Board Commitments** — Fleet coordinates are hashed into a 100-cell Merkle tree root (`board_commitment`). Ship locations remain 100% private and invisible to block explorers and opponents.
-- **ZK Hit/Miss Proof Resolution** — Shots fired generate client-side ZK inclusion/exclusion path proofs verifying outcomes without revealing un-targeted grid positions.
-- **Local ZK AI Mode** — Play instantly offline against a tactical computer opponent using checkerboard parity opening searches and cardinal pursuit logic. No wallet or backend required.
-- **Real-Time Multiplayer** — Match creation via 6-character match codes over WebSockets with automatic reconnect support.
-- **Dispute Timeout & Emergency Safeguards** — Enforces a 60-second inactivity timeout (`claim_timeout_victory`) for AFK opponents, plus a 1-hour emergency refund window (`emergency_refund`).
+- **Dual-Ledger Escrow Spec (`battleship.compact`)** — Players wager equal NIGHT stakes into contract escrow (`receiveUnshielded` / `sendUnshielded`), with winner claiming 100% of the 2× pot upon verified victory or opponent forfeit/timeout.
+- **In-Circuit Merkle Verification & Anti-Replay** — Fleet layouts are committed as a 100-cell salted SHA-256 Merkle root (`battleship:leaf:v1`). `resolve_shot` verifies the 7-level proof inside Compact using `persistentHash`, while `fired_shots` blocks repeat-shot farming.
+- **Local ZK AI Mode (Offline)** — Play instantly offline against a tactical computer opponent using checkerboard parity hunt mode and cardinal target pursuit. No wallet required.
+- **Real-Time Convex PvP Multiplayer** — Create or join 6-character match lobbies over Convex reactive queries without exposing raw ship coordinates.
+- **Liveness & Griefing Protections** — Includes `cancel_waiting_game` before P2 joins, voluntary `forfeit_game` surrender, 60-second `claim_timeout_victory`, and 1-hour `emergency_refund`.
 
 ---
 
@@ -34,12 +34,12 @@ A classic 10x10 Battleship strategy game reimagined with real-time multiplayer, 
 
 | Layer | Technology | Description |
 |---|---|---|
-| **Frontend** | React 18, TypeScript (Vite), Tailwind CSS | Tactical command console, Lace Wallet connector, interactive radar grids. |
-| **ZK Smart Contracts** | Compact Language (`v0.14.0+`) | Contract-held escrow wagers, turn state transitions, and ZK Merkle proof verification. |
-| **Local ZK Prover** | Docker (`midnightnetwork/proof-server:latest`) | Local Actix Web proof server listening on `http://localhost:6300`. |
-| **Shared Engine** | Framework-agnostic TypeScript (`/shared`) | Core 10x10 Battleship rules, Merkle tree constructor, and fog-of-war AI. |
-| **Backend & Sync** | Node.js, Socket.io, Convex | Real-time match synchronization, lobby room management, and state persistence. |
-| **Chain & Wallet** | Midnight Network, Lace Wallet Extension | Dual-Ledger architecture (Public NIGHT ledger + Private ZK State). |
+| **Frontend** | React 18, TypeScript (Vite), Tailwind CSS | Tactical command console, Lace Wallet connector, live protocol readiness monitor. |
+| **ZK Smart Contracts** | Compact (`v0.14.0+`) | 9-circuit escrow wager, turn order, anti-replay, and in-circuit Merkle proof verification. |
+| **Local ZK Prover** | Docker (`midnightnetwork/proof-server:latest`) | Local proof server listening on `http://127.0.0.1:6300`. |
+| **Shared Engine** | Pure TypeScript (`/shared`) | Framework-agnostic 10×10 Battleship rules and fog-of-war AI (`14/14` Vitest unit tests). |
+| **Realtime Sync** | Convex (`frontend/convex/`) | Serverless real-time match synchronization, lobbies, match history, and leaderboard. |
+| **Chain & Wallet** | Midnight Network & Lace Wallet | Multi-network profiles (`preview`, `preprod`, `mainnet`) supporting DUST gas and NIGHT wagers. |
 
 ---
 
@@ -56,23 +56,23 @@ npm install
 npm run build --workspace=shared
 ```
 
-### 3. Launch Development Server
+### 3. Deploy Convex Dev Functions & Launch Frontend
 ```bash
+cd frontend && npx convex dev
+# In another terminal from repo root:
 npm run dev
 ```
-*Open [http://localhost:5173](http://localhost:5173) in your browser with Lace Wallet extension connected.*
+*Open [http://localhost:5173](http://localhost:5173) in your browser.*
 
-For complete developer instructions, see [**`SETUP.md`**](SETUP.md).
+For full setup and deployment instructions, see [**`SETUP.md`**](SETUP.md) and [**`MAINNET.md`**](MAINNET.md).
 
 ---
 
-## 📜 Deployed Smart Contract Details
+## 📜 Smart Contract Target Status
 
-- **Contract Spec**: `BattleshipStaking.compact`
-- **Configured Address**: `0x0d8e9c14664f3757558a5fa5e3304f5c3807f7a6`
-- **Network**: Midnight Network (Preview Testnet)
-- **RPC Endpoint**: `https://rpc.preview.midnight.network`
-- **Explorer**: [https://preview.midnightexplorer.com](https://preview.midnightexplorer.com)
+- **Contract Spec:** [`contracts/compact/battleship.compact`](contracts/compact/battleship.compact)
+- **Active Default Environment:** Midnight Preview Testnet (`VITE_MIDNIGHT_NETWORK=preview`)
+- **Contract Deployment Address:** Set via `VITE_MIDNIGHT_CONTRACT_ADDRESS` (or `VITE_MIDNIGHT_MAINNET_CONTRACT_ADDRESS`) once compiled with `compactc` and deployed. See [`MAINNET.md`](MAINNET.md) for current readiness.
 
 ---
 
