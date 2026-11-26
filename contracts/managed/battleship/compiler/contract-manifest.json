@@ -1,0 +1,219 @@
+{
+  "manifest-version": "1",
+  "compiler-version": "0.36.1",
+  "compiler-commit": "7fa3a117c5e7efe9d2c51da04263e5f0b3509144",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "compiler": {
+    "type": "directory",
+    "contract-info.json": {
+      "type": "file",
+      "size": 12844,
+      "hash": "971d47db16ee45ab7a189c9313034241f4c04db68883b4569785435a169baf78"
+    }
+  },
+  "contract": {
+    "type": "directory",
+    "index.d.ts": {
+      "type": "file",
+      "size": 10092,
+      "hash": "cce6950a7cffcdc98f21205d6754c9cd380911fa05a9505f20f95584d6a0349d"
+    },
+    "index.js": {
+      "type": "file",
+      "size": 166307,
+      "hash": "9817fdd8506458d98636c2e1328dad8c460373ca3b7464f19f347fc3f40eff44"
+    },
+    "index.js.map": {
+      "type": "file",
+      "size": 10179,
+      "hash": "9409628af5bf596339eafaf56f0f43d53d4179428f19f4d2c6ae2e48e038233c"
+    }
+  },
+  "zkir": {
+    "type": "directory",
+    "cancel_waiting_game.bzkir": {
+      "type": "file",
+      "size": 2899,
+      "hash": "ae1246fd622d28962c0b267076ac72a0e1a654312e5e9a20390b463c1fb32fd2"
+    },
+    "cancel_waiting_game.zkir": {
+      "type": "file",
+      "size": 9173,
+      "hash": "019c580089471840414929f52e1d809d532b35b0ff92afdf4e0c8704b39907ec"
+    },
+    "claim_timeout_victory.bzkir": {
+      "type": "file",
+      "size": 3623,
+      "hash": "6344c6f69652a0d8d08ec1a31f29d28fea69de99bd18f5ee031f46c8801a3f27"
+    },
+    "claim_timeout_victory.zkir": {
+      "type": "file",
+      "size": 11202,
+      "hash": "fc7534c7248edb9533002e13e09f9571419e12222727d401779d204dfacb8521"
+    },
+    "claim_winner_payout.bzkir": {
+      "type": "file",
+      "size": 2932,
+      "hash": "43a7d0a5961b7d9daf27265312c0fe719915fff3278395282a856d56b9889d86"
+    },
+    "claim_winner_payout.zkir": {
+      "type": "file",
+      "size": 9270,
+      "hash": "28bb10e90f088cba27ce2477e2f6f7309665602fe02709070951c79d856db531"
+    },
+    "create_game.bzkir": {
+      "type": "file",
+      "size": 2076,
+      "hash": "ae4547244d160b5f77a69d9d9c8bb96af0273926ae38a2fa2ef225434224a9cf"
+    },
+    "create_game.zkir": {
+      "type": "file",
+      "size": 5820,
+      "hash": "2be380fe84df3fe5ae51063d2e5bc11875e452a12ee4b9caf7f0a7bbffd58a81"
+    },
+    "emergency_refund.bzkir": {
+      "type": "file",
+      "size": 4528,
+      "hash": "13e0590396de28ba004b3a49bb8d4bd752d49ed8e3b499ea9bbd52cb9b2d6967"
+    },
+    "emergency_refund.zkir": {
+      "type": "file",
+      "size": 13676,
+      "hash": "49e2986e61b729583af9724480233b5778fb844ce3e77c9aeb8873891eb745ff"
+    },
+    "fire_shot.bzkir": {
+      "type": "file",
+      "size": 3076,
+      "hash": "a5212dac8c927bbfa85da52ef97decb470af17c874b988eae95c95c8ad1f6f10"
+    },
+    "fire_shot.zkir": {
+      "type": "file",
+      "size": 10009,
+      "hash": "2f94dcee3be913f6ae6b31bc745f85e1a51440aa89b0dadaaa0bcd04f7190ce9"
+    },
+    "forfeit_game.bzkir": {
+      "type": "file",
+      "size": 3259,
+      "hash": "3bc832621f63345fb648a268c6ac0e85fa06ccf150f0e5982406718925c5ec31"
+    },
+    "forfeit_game.zkir": {
+      "type": "file",
+      "size": 10083,
+      "hash": "30aade3dc21eeb402de729b1e02637aeb8298c1874bfc4d40f36d45c3164fdce"
+    },
+    "join_game.bzkir": {
+      "type": "file",
+      "size": 3095,
+      "hash": "4359c0b63c5ecbf74b4b474862ec206096ad5cee66ece825895b450165589b5a"
+    },
+    "join_game.zkir": {
+      "type": "file",
+      "size": 9982,
+      "hash": "932f389a307ca38109e9d92ad27cf6820aacba13cdb50db7ba746696a2513ce4"
+    },
+    "resolve_shot.bzkir": {
+      "type": "file",
+      "size": 6675,
+      "hash": "f84560d66ce38c762483e93e27084c3bf144615e3f1595a2c880969f2e5225d9"
+    },
+    "resolve_shot.zkir": {
+      "type": "file",
+      "size": 22637,
+      "hash": "eef0939d81caed4af2c7f2d023e5718054069f19bf7c36d69934f2f3e36f4cf2"
+    }
+  },
+  "keys": {
+    "type": "directory",
+    "cancel_waiting_game.prover": {
+      "type": "file",
+      "size": 11279459,
+      "hash": "d116bf6a4c0b97092fc31996be013c8ca26c7838a6374aa0366d6b7c405135e5"
+    },
+    "cancel_waiting_game.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "f6371047d2eff35df6541fff2a4e936e26ab30314153c62a283b7d7af8aa4bf4"
+    },
+    "claim_timeout_victory.prover": {
+      "type": "file",
+      "size": 11280183,
+      "hash": "179a349ce0010e14c9d176a45ae30b59d5d0fd9c476f161ec55a5f41ec1d9ea9"
+    },
+    "claim_timeout_victory.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "9ff3de0c9f5c2683ba83cf40f90fdd68d9ff8ab292819888e79d404e7259f602"
+    },
+    "claim_winner_payout.prover": {
+      "type": "file",
+      "size": 11279492,
+      "hash": "4a6b45deab19b8ba9e69f84865410d12167e6341a2b6302cb9c86bb7301f9665"
+    },
+    "claim_winner_payout.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "ed9838bd8b36e7186391929420ad133ef13b55e619f96fbff8e6cd0bb302c03a"
+    },
+    "create_game.prover": {
+      "type": "file",
+      "size": 11278636,
+      "hash": "bd5dc0bbb9c81cf36afffb578737fc92043c82c78b05803cbb176383122cd906"
+    },
+    "create_game.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "08709f6dae2cb47d3c90ffe36e159e468d3148990ebe2f6b550baedf7af81b28"
+    },
+    "emergency_refund.prover": {
+      "type": "file",
+      "size": 11281088,
+      "hash": "20f759d855d4a69a7d3bfc23d3e2a5acc90c02115d5ad04d517d08297603adda"
+    },
+    "emergency_refund.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "5e452203f0076b4f72641b51a5af4f03633a2bbc5c40017e299ce046526c4f56"
+    },
+    "fire_shot.prover": {
+      "type": "file",
+      "size": 22551828,
+      "hash": "0b28de43b459bcca60dc1ff85093a76619e4e9ddf35be2e10c9f1306bb3a4935"
+    },
+    "fire_shot.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "c8afb89aaf2199e6a5faa59533f9912b8ee64ae05c274ee0480cf3221d9eb0c1"
+    },
+    "forfeit_game.prover": {
+      "type": "file",
+      "size": 11279819,
+      "hash": "fcac307e8ac98d284ab41fc4236e1266bee4fd6e03df3d644ed618a68dc94276"
+    },
+    "forfeit_game.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "4de2f9b8298c6b9680311476f8de107edd1e5d51ce9c4616cb497754a6692508"
+    },
+    "join_game.prover": {
+      "type": "file",
+      "size": 11279655,
+      "hash": "6b26718ffd4498109ccd8eadc7bffae148468ed4576b33fce490f6c991e93a8e"
+    },
+    "join_game.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "162526085f667019df4825a124c8438cfaaf155af34cf2bab56ce126fc92fedf"
+    },
+    "resolve_shot.prover": {
+      "type": "file",
+      "size": 90188579,
+      "hash": "54032761029f800c1ed0d37c354b6431f81a9cabb1ddaf8cfad13cd9afc5a050"
+    },
+    "resolve_shot.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "8aa77ac4e4158ab93a9168c85918511b9ebe7342c039d87eb5a025ab68d3a134"
+    }
+  }
+}

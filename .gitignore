@@ -9,6 +9,7 @@ out/
 artifacts/
 cache/
 typechain-types/
+contracts/managed/**/keys/
 *.tsbuildinfo
 
 # Environment files & secrets

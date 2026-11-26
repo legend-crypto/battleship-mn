@@ -1,0 +1,585 @@
+{
+  "compiler-version": "0.36.1",
+  "compiler-commit": "7fa3a117c5e7efe9d2c51da04263e5f0b3509144",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "circuits": [
+    {
+      "name": "create_game",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "board_commitment",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "stake_amount_night",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        },
+        {
+          "name": "current_timestamp",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        },
+        {
+          "name": "payout_addr",
+          "type": {
+            "type-name": "Struct",
+            "name": "UserAddress",
+            "elements": [
+              {
+                "name": "bytes",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "cancel_waiting_game",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "join_game",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "board_commitment",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "current_timestamp",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        },
+        {
+          "name": "payout_addr",
+          "type": {
+            "type-name": "Struct",
+            "name": "UserAddress",
+            "elements": [
+              {
+                "name": "bytes",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "fire_shot",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "target_coord",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "current_timestamp",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "resolve_shot",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "target_coord",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "is_hit",
+          "type": {
+            "type-name": "Boolean"
+          }
+        },
+        {
+          "name": "leaf",
+          "type": {
+            "type-name": "Struct",
+            "name": "CellLeaf",
+            "elements": [
+              {
+                "name": "cell_index",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "is_occupied",
+                "type": {
+                  "type-name": "Boolean"
+                }
+              },
+              {
+                "name": "ship_id",
+                "type": {
+                  "type-name": "Enum",
+                  "name": "ShipId",
+                  "elements": [
+                    "EMPTY",
+                    "CARRIER",
+                    "BATTLESHIP",
+                    "CRUISER",
+                    "SUBMARINE",
+                    "DESTROYER"
+                  ]
+                }
+              },
+              {
+                "name": "salt",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "type-name": "Struct",
+            "name": "MerkleProof",
+            "elements": [
+              {
+                "name": "path_hashes",
+                "type": {
+                  "type-name": "Vector",
+                  "length": 7,
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                }
+              },
+              {
+                "name": "path_directions",
+                "type": {
+                  "type-name": "Vector",
+                  "length": 7,
+                  "type": {
+                    "type-name": "Boolean"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "current_timestamp",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "forfeit_game",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "claim_winner_payout",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "claim_timeout_victory",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "emergency_refund",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "game_id",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    }
+  ],
+  "witnesses": [
+    {
+      "name": "player_secret_key",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    }
+  ],
+  "contracts": [
+  ],
+  "ledger": [
+    {
+      "name": "games",
+      "index": 0,
+      "exported": true,
+      "storage": "Map",
+      "key": {
+        "type-name": "Bytes",
+        "length": 32
+      },
+      "value": {
+        "type-name": "Struct",
+        "name": "GameState",
+        "elements": [
+          {
+            "name": "game_id",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "player1_id",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "player2_id",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "player1_payout",
+            "type": {
+              "type-name": "Struct",
+              "name": "UserAddress",
+              "elements": [
+                {
+                  "name": "bytes",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "player2_payout",
+            "type": {
+              "type-name": "Struct",
+              "name": "UserAddress",
+              "elements": [
+                {
+                  "name": "bytes",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "board_commitment_p1",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "board_commitment_p2",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "stake_amount_night",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "total_escrow_night",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "p1_staked",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "p2_staked",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "is_payout_claimed",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "current_turn",
+            "type": {
+              "type-name": "Enum",
+              "name": "PlayerTurn",
+              "elements": [
+                "PLAYER_1",
+                "PLAYER_2"
+              ]
+            }
+          },
+          {
+            "name": "phase",
+            "type": {
+              "type-name": "Enum",
+              "name": "GamePhase",
+              "elements": [
+                "WAITING_FOR_PLAYER2",
+                "IN_PROGRESS",
+                "GAME_OVER",
+                "REFUNDED"
+              ]
+            }
+          },
+          {
+            "name": "created_timestamp",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "last_action_timestamp",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "p1_hits_against_p2",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "p2_hits_against_p1",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "last_shot_coord",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "pending_shot_active",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "winner_id",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "winner_payout",
+            "type": {
+              "type-name": "Struct",
+              "name": "UserAddress",
+              "elements": [
+                {
+                  "name": "bytes",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "fired_shots",
+      "index": 1,
+      "exported": true,
+      "storage": "Map",
+      "key": {
+        "type-name": "Bytes",
+        "length": 32
+      },
+      "value": {
+        "type-name": "Boolean"
+      }
+    }
+  ]
+}

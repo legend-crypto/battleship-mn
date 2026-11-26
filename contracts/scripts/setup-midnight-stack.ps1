@@ -1,6 +1,6 @@
 # Midnight Stack Automated Setup Script for Windows PowerShell
 Write-Host "====================================================================" -ForegroundColor Cyan
-Write-Host "MIDNIGHT NETWORK TESTNET STACK AND PROOF SERVER SETUP" -ForegroundColor Cyan
+Write-Host "MIDNIGHT NETWORK STACK AND PROOF SERVER SETUP" -ForegroundColor Cyan
 Write-Host "====================================================================" -ForegroundColor Cyan
 
 # Find docker executable path
@@ -37,33 +37,29 @@ for ($i = 1; $i -le 10; $i++) {
 }
 
 if (-not $isReady) {
-    Write-Host "====================================================================" -ForegroundColor Yellow
-    Write-Host "Docker Desktop application was launched but engine is still initializing." -ForegroundColor Yellow
-    Write-Host "Please check the Docker Desktop window on your screen to complete initial setup." -ForegroundColor Yellow
-    Write-Host "Once Docker Desktop shows 'Engine Running', run:" -ForegroundColor Yellow
-    Write-Host "  npm run setup:stack --workspace=contracts" -ForegroundColor Yellow
-    Write-Host "====================================================================" -ForegroundColor Yellow
+    Write-Host "Docker Desktop engine is not running yet. Start Docker Desktop and re-run." -ForegroundColor Yellow
     Exit 1
 }
 
 Write-Host "Docker Engine Daemon is ONLINE and READY!" -ForegroundColor Green
 
 # 3. Pull and launch Midnight Proof Server Docker container
-Write-Host "Pulling Midnight Proof Server container image..." -ForegroundColor Cyan
-& $dockerBin pull midnightnetwork/proof-server:latest
+Write-Host "Pulling Midnight Proof Server (midnightntwrk/proof-server:9.0.2)..." -ForegroundColor Cyan
+& $dockerBin pull midnightntwrk/proof-server:9.0.2
 
 Write-Host "Starting Midnight Proof Server on port 6300..." -ForegroundColor Cyan
-& $dockerBin rm -f midnight-proof-server 2>$null
-& $dockerBin run -d --name midnight-proof-server -p 6300:6300 midnightnetwork/proof-server:latest
+& $dockerBin rm -f midnight-proof-server horizon-proof-server 2>$null
+& $dockerBin run -d --name midnight-proof-server -p 6300:6300 midnightntwrk/proof-server:9.0.2
 
-# 4. Pull Midnight Compact Compiler container
-Write-Host "Pulling Midnight Compact Compiler image..." -ForegroundColor Cyan
-& $dockerBin pull midnightnetwork/compactc:latest
+# 4. Pre-warm Alpine + Compact toolchain v0.36.1 cache volume
+Write-Host "Caching Compact compiler toolchain v0.36.1 in Docker volume midnight_compact_cache..." -ForegroundColor Cyan
+& $dockerBin pull alpine:latest
+& $dockerBin run --rm -v midnight_compact_cache:/root/.compact alpine:latest sh -c "apk add --no-cache bash curl xz ca-certificates gcompat libstdc++ >/dev/null && curl -fsSL https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.3/compact-x86_64-unknown-linux-musl.tar.xz | tar -xJ -C /usr/local/bin --strip-components=1 && compact update 0.36.1 && compact compile --version"
 
 Write-Host "====================================================================" -ForegroundColor Green
-Write-Host "MIDNIGHT PROOF SERVER AND COMPILER SETUP COMPLETE" -ForegroundColor Green
+Write-Host "MIDNIGHT PROOF SERVER AND COMPACT v0.36.1 SETUP COMPLETE" -ForegroundColor Green
 Write-Host "====================================================================" -ForegroundColor Green
 Write-Host " - Proof Server URL:    http://127.0.0.1:6300"
 Write-Host " - Proof Server Health: http://127.0.0.1:6300/health"
-Write-Host " - Compact Compiler:   docker run --rm -v ${PWD}:/code midnightnetwork/compactc:latest"
+Write-Host " - Compile Contract:    npm run compile:compact --workspace=contracts"
 Write-Host "===================================================================="

@@ -1,98 +1,103 @@
 // ============================================================================
-// BATTLESHIP MN — MIDNIGHT COMPACT SMART CONTRACT (MAINNET HARDENED SPEC)
+// BATTLESHIP MN — MIDNIGHT COMPACT SMART CONTRACT (COMPACT v0.17 COMPLIANT)
 // ============================================================================
 // Security & Protocol Properties:
-// 1. In-Circuit Merkle Verification:
-//    Uses `persistentHash` directly inside `resolve_shot` (NO untrusted
-//    witness hash/verification callbacks) so defenders cannot forge cell proofs.
-// 2. Repeat-Shot Prevention:
-//    Tracks every (game_id, shooter, target_coord) in `fired_shots` Map so
-//    attackers cannot farm 17 hits on a single occupied cell.
-// 3. Dual-Token Separation (DUST for Gas, NIGHT for Escrow):
-//    Uses `receiveUnshielded` / `sendUnshielded` for wager escrow.
-// 4. Liveness & Griefing Protections:
-//    - `cancel_waiting_game`: Host reclaims stake anytime before P2 joins.
-//    - `forfeit_game`: Voluntary surrender settles pot immediately.
+// 1. Secret-Key Nullifier Authentication:
+//    Players authenticate every circuit via a private 32-byte witness secret
+//    hashed with persistentHash (`derive_player_id`), avoiding spoofable
+//    `ownPublicKey()` access control while binding payout `UserAddress` at join.
+// 2. In-Circuit Merkle Verification:
+//    Uses `persistentHash` inside `resolve_shot` across 7 unrolled tree levels.
+// 3. Repeat-Shot Prevention:
+//    Tracks every (game_id, shooter_id, target_coord) in `fired_shots`.
+// 4. Native NIGHT Escrow + DUST Gas:
+//    Uses `default<Bytes<32>>` with `receiveUnshielded` / `sendUnshielded`.
+// 5. Liveness & Griefing Protections:
+//    - `cancel_waiting_game`: Host reclaims stake before P2 joins.
+//    - `forfeit_game`: Voluntary surrender releases 2x pot to opponent.
 //    - `claim_timeout_victory`: 60s inactivity claim via `blockTimeGreaterThan`.
-//    - `emergency_refund`: 1-hour stuck-game refund for both players.
+//    - `emergency_refund`: 1-hour stuck-game refund for participants.
 // ============================================================================
 
-pragma language_version >= 0.14.0;
+pragma language_version >= 0.20;
 import CompactStandardLibrary;
 
-const TOTAL_BOARD_CELLS: Uint<8> = 100;
-const TOTAL_FLEET_CELLS: Uint<8> = 17;
-
-// Timeout Thresholds (in seconds)
-const DISPUTE_TIMEOUT_SECONDS: Uint<64> = 60;
-const EMERGENCY_REFUND_TIMEOUT_SECONDS: Uint<64> = 3600;
-
 enum ShipId {
-  EMPTY = 0,
-  CARRIER = 1,     // 5 cells
-  BATTLESHIP = 2,  // 4 cells
-  CRUISER = 3,     // 3 cells
-  SUBMARINE = 4,   // 3 cells
-  DESTROYER = 5    // 2 cells
+  EMPTY,
+  CARRIER,
+  BATTLESHIP,
+  CRUISER,
+  SUBMARINE,
+  DESTROYER
 }
 
 enum GamePhase {
-  WAITING_FOR_PLAYER2 = 0,
-  IN_PROGRESS = 1,
-  GAME_OVER = 2,
-  REFUNDED = 3
+  WAITING_FOR_PLAYER2,
+  IN_PROGRESS,
+  GAME_OVER,
+  REFUNDED
 }
 
 enum PlayerTurn {
-  PLAYER_1 = 1,
-  PLAYER_2 = 2
+  PLAYER_1,
+  PLAYER_2
 }
 
 struct CellLeaf {
-  cell_index: Uint<8>,
-  is_occupied: Boolean,
-  ship_id: ShipId,
-  salt: Bytes<32>
+  cell_index: Uint<8>;
+  is_occupied: Boolean;
+  ship_id: ShipId;
+  salt: Bytes<32>;
 }
 
 // Height-7 Merkle path proof (2^7 = 128 >= 100 cells)
 struct MerkleProof {
-  path_hashes: Vector<7, Bytes<32>>,
-  path_directions: Vector<7, Boolean> // true if current node is right child
+  path_hashes: Vector<7, Bytes<32>>;
+  path_directions: Vector<7, Boolean>;
 }
 
 struct GameState {
-  game_id: Bytes<32>,
-  player1: Address,
-  player2: Address,
-  board_commitment_p1: Bytes<32>,
-  board_commitment_p2: Bytes<32>,
+  game_id: Bytes<32>;
+  player1_id: Bytes<32>;
+  player2_id: Bytes<32>;
+  player1_payout: UserAddress;
+  player2_payout: UserAddress;
+  board_commitment_p1: Bytes<32>;
+  board_commitment_p2: Bytes<32>;
 
-  stake_amount_night: Uint<64>,
-  total_escrow_night: Uint<64>,
-  p1_staked: Boolean,
-  p2_staked: Boolean,
-  is_payout_claimed: Boolean,
+  stake_amount_night: Uint<64>;
+  total_escrow_night: Uint<64>;
+  p1_staked: Boolean;
+  p2_staked: Boolean;
+  is_payout_claimed: Boolean;
 
-  current_turn: PlayerTurn,
-  phase: GamePhase,
-  created_timestamp: Uint<64>,
-  last_action_timestamp: Uint<64>,
+  current_turn: PlayerTurn;
+  phase: GamePhase;
+  created_timestamp: Uint<64>;
+  last_action_timestamp: Uint<64>;
 
-  p1_hits_against_p2: Uint<8>,
-  p2_hits_against_p1: Uint<8>,
-  last_shot_coord: Uint<8>,
-  pending_shot_active: Boolean,
-  winner: Address
+  p1_hits_against_p2: Uint<8>;
+  p2_hits_against_p1: Uint<8>;
+  last_shot_coord: Uint<8>;
+  pending_shot_active: Boolean;
+  winner_id: Bytes<32>;
+  winner_payout: UserAddress;
 }
 
 export ledger games: Map<Bytes<32>, GameState>;
 export ledger fired_shots: Map<Bytes<32>, Boolean>;
 
-/**
- * In-circuit domain-separated hash of a single cell leaf.
- */
-pure circuit hash_cell_leaf(leaf: CellLeaf): Bytes<32> {
+// Local private witness providing the player's 32-byte secret authentication key.
+witness player_secret_key(): Bytes<32>;
+
+circuit derive_player_id(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "battleship:pk:v1"),
+    sk
+  ]);
+}
+
+circuit hash_cell_leaf(leaf: CellLeaf): Bytes<32> {
   const occupied_byte: Uint<8> = leaf.is_occupied ? 1 : 0;
   return persistentHash<Vector<5, Bytes<32>>>([
     pad(32, "battleship:leaf:v1"),
@@ -103,19 +108,13 @@ pure circuit hash_cell_leaf(leaf: CellLeaf): Bytes<32> {
   ]);
 }
 
-/**
- * Single Merkle parent step executed inside the ZK circuit.
- */
-pure circuit merkle_step(current: Bytes<32>, sibling: Bytes<32>, is_right_child: Boolean): Bytes<32> {
+circuit merkle_step(current: Bytes<32>, sibling: Bytes<32>, is_right_child: Boolean): Bytes<32> {
   return is_right_child
     ? persistentHash<Vector<2, Bytes<32>>>([sibling, current])
     : persistentHash<Vector<2, Bytes<32>>>([current, sibling]);
 }
 
-/**
- * Unrolled 7-level Merkle root computation verified strictly inside the circuit.
- */
-pure circuit verify_merkle_root(leaf_hash: Bytes<32>, proof: MerkleProof): Bytes<32> {
+circuit verify_merkle_root(leaf_hash: Bytes<32>, proof: MerkleProof): Bytes<32> {
   const h1 = merkle_step(leaf_hash, proof.path_hashes[0], proof.path_directions[0]);
   const h2 = merkle_step(h1, proof.path_hashes[1], proof.path_directions[1]);
   const h3 = merkle_step(h2, proof.path_hashes[2], proof.path_directions[2]);
@@ -125,161 +124,160 @@ pure circuit verify_merkle_root(leaf_hash: Bytes<32>, proof: MerkleProof): Bytes
   return merkle_step(h6, proof.path_hashes[6], proof.path_directions[6]);
 }
 
-/**
- * Computes unique replay-protection key for (game_id, shooter, target_coord).
- */
-pure circuit shot_replay_key(game_id: Bytes<32>, shooter: Address, target_coord: Uint<8>): Bytes<32> {
+circuit shot_replay_key(game_id: Bytes<32>, shooter_id: Bytes<32>, target_coord: Uint<8>): Bytes<32> {
   return persistentHash<Vector<4, Bytes<32>>>([
     pad(32, "battleship:shot:v1"),
     game_id,
-    shooter as Bytes<32>,
+    shooter_id,
     (target_coord as Field) as Bytes<32>
   ]);
 }
 
-/**
- * Helper: resolves escrow token color for unshielded NIGHT deposits/payouts.
- * NOTE: Update to the canonical Midnight NIGHT token color before mainnet deploy.
- */
-pure circuit escrow_token_color(): Bytes<32> {
-  const domain = pad(32, "battleship:night:escrow");
-  return tokenType(domain, kernel.self());
+circuit night_token_color(): Bytes<32> {
+  return default<Bytes<32>>;
 }
 
-/**
- * CIRCUIT 1: create_game
- * Host initializes a match with their 100-cell board commitment and deposits stake.
- */
 export circuit create_game(
   game_id: Bytes<32>,
   board_commitment: Bytes<32>,
   stake_amount_night: Uint<64>,
-  current_timestamp: Uint<64>
-): Void {
-  assert !games.member(game_id), "Game ID already exists";
-  assert board_commitment != pad(32, ""), "Invalid board commitment";
-  assert stake_amount_night > 0, "Stake must be positive";
-  assert !blockTimeLessThan(current_timestamp), "Timestamp ahead of block time";
+  current_timestamp: Uint<64>,
+  payout_addr: UserAddress
+): [] {
+  const pub_game_id = disclose(game_id);
+  const pub_commitment = disclose(board_commitment);
+  const pub_stake = disclose(stake_amount_night);
+  const pub_ts = disclose(current_timestamp);
+  const pub_payout = disclose(payout_addr);
 
-  receiveUnshielded(escrow_token_color(), disclose(stake_amount_night) as Uint<128>);
+  assert(!games.member(pub_game_id), "Game ID already exists");
+  assert(pub_commitment != default<Bytes<32>>, "Invalid board commitment");
+  assert(pub_stake > 0, "Stake must be positive");
+  assert(!blockTimeLt(pub_ts), "Timestamp ahead of block time");
+
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+
+  receiveUnshielded(night_token_color(), pub_stake as Uint<128>);
 
   const new_game = GameState {
-    game_id: game_id,
-    player1: transaction.sender,
-    player2: pad(32, ""),
-    board_commitment_p1: board_commitment,
-    board_commitment_p2: pad(32, ""),
-    stake_amount_night: stake_amount_night,
-    total_escrow_night: stake_amount_night,
+    game_id: pub_game_id,
+    player1_id: caller_id,
+    player2_id: default<Bytes<32>>,
+    player1_payout: pub_payout,
+    player2_payout: default<UserAddress>,
+    board_commitment_p1: pub_commitment,
+    board_commitment_p2: default<Bytes<32>>,
+    stake_amount_night: pub_stake,
+    total_escrow_night: pub_stake,
     p1_staked: true,
     p2_staked: false,
     is_payout_claimed: false,
     current_turn: PlayerTurn.PLAYER_1,
     phase: GamePhase.WAITING_FOR_PLAYER2,
-    created_timestamp: current_timestamp,
-    last_action_timestamp: current_timestamp,
+    created_timestamp: pub_ts,
+    last_action_timestamp: pub_ts,
     p1_hits_against_p2: 0,
     p2_hits_against_p1: 0,
     last_shot_coord: 255,
     pending_shot_active: false,
-    winner: pad(32, "")
+    winner_id: default<Bytes<32>>,
+    winner_payout: default<UserAddress>
   };
 
-  games.insert(game_id, new_game);
+  games.insert(pub_game_id, new_game);
 }
 
-/**
- * CIRCUIT 2: cancel_waiting_game
- * Allows Host to cancel and reclaim stake anytime before Player 2 joins.
- */
-export circuit cancel_waiting_game(game_id: Bytes<32>): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+export circuit cancel_waiting_game(game_id: Bytes<32>): [] {
+  const pub_game_id = disclose(game_id);
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  assert game.phase == GamePhase.WAITING_FOR_PLAYER2, "Game already started or closed";
-  assert transaction.sender == game.player1, "Only host can cancel waiting game";
-  assert game.p1_staked, "Host stake already refunded";
-
-  game.p1_staked = false;
-  game.phase = GamePhase.REFUNDED;
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  assert(game.phase == GamePhase.WAITING_FOR_PLAYER2, "Game already started or closed");
+  assert(caller_id == game.player1_id, "Only host can cancel waiting game");
+  assert(game.p1_staked, "Host stake already refunded");
 
   sendUnshielded(
-    escrow_token_color(),
-    disclose(game.stake_amount_night) as Uint<128>,
-    right<ContractAddress, UserAddress>(disclose(game.player1))
+    night_token_color(),
+    game.stake_amount_night as Uint<128>,
+    right<ContractAddress, UserAddress>(game.player1_payout)
   );
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    p1_staked: false,
+    phase: GamePhase.REFUNDED
+  });
 }
 
-/**
- * CIRCUIT 3: join_game
- * Guest joins waiting match with their board commitment and deposits equal stake.
- */
 export circuit join_game(
   game_id: Bytes<32>,
   board_commitment: Bytes<32>,
-  current_timestamp: Uint<64>
-): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+  current_timestamp: Uint<64>,
+  payout_addr: UserAddress
+): [] {
+  const pub_game_id = disclose(game_id);
+  const pub_commitment = disclose(board_commitment);
+  const pub_ts = disclose(current_timestamp);
+  const pub_payout = disclose(payout_addr);
 
-  assert game.phase == GamePhase.WAITING_FOR_PLAYER2, "Game is not accepting player 2";
-  assert transaction.sender != game.player1, "Host cannot join as player 2";
-  assert board_commitment != pad(32, ""), "Invalid board commitment";
-  assert !blockTimeLessThan(current_timestamp), "Timestamp ahead of block time";
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  receiveUnshielded(escrow_token_color(), disclose(game.stake_amount_night) as Uint<128>);
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  assert(game.phase == GamePhase.WAITING_FOR_PLAYER2, "Game is not accepting player 2");
+  assert(caller_id != game.player1_id, "Host cannot join as player 2");
+  assert(pub_commitment != default<Bytes<32>>, "Invalid board commitment");
+  assert(!blockTimeLt(pub_ts), "Timestamp ahead of block time");
 
-  game.player2 = transaction.sender;
-  game.board_commitment_p2 = board_commitment;
-  game.p2_staked = true;
-  game.total_escrow_night = game.stake_amount_night + game.stake_amount_night;
-  game.phase = GamePhase.IN_PROGRESS;
-  game.current_turn = PlayerTurn.PLAYER_1;
-  game.last_action_timestamp = current_timestamp;
+  receiveUnshielded(night_token_color(), game.stake_amount_night as Uint<128>);
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    player2_id: caller_id,
+    player2_payout: pub_payout,
+    board_commitment_p2: pub_commitment,
+    p2_staked: true,
+    total_escrow_night: (game.stake_amount_night + game.stake_amount_night) as Uint<64>,
+    phase: GamePhase.IN_PROGRESS,
+    current_turn: PlayerTurn.PLAYER_1,
+    last_action_timestamp: pub_ts
+  });
 }
 
-/**
- * CIRCUIT 4: fire_shot
- * Active player submits target coordinate (0..99). Enforces turn order & no repeat shots.
- */
 export circuit fire_shot(
   game_id: Bytes<32>,
   target_coord: Uint<8>,
   current_timestamp: Uint<64>
-): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+): [] {
+  const pub_game_id = disclose(game_id);
+  const pub_coord = disclose(target_coord);
+  const pub_ts = disclose(current_timestamp);
 
-  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
-  assert !game.pending_shot_active, "Previous shot resolution pending";
-  assert target_coord < TOTAL_BOARD_CELLS, "Target coordinate out of 10x10 bounds (0..99)";
-  assert !blockTimeLessThan(current_timestamp), "Timestamp ahead of block time";
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  if (game.current_turn == PlayerTurn.PLAYER_1) {
-    assert transaction.sender == game.player1, "Turn violation: Only Player 1 can fire now";
-  } else {
-    assert transaction.sender == game.player2, "Turn violation: Only Player 2 can fire now";
-  }
+  assert(game.phase == GamePhase.IN_PROGRESS, "Game is not in progress");
+  assert(!game.pending_shot_active, "Previous shot resolution pending");
+  assert(pub_coord < 100, "Target coordinate out of 10x10 bounds (0..99)");
+  assert(!blockTimeLt(pub_ts), "Timestamp ahead of block time");
 
-  const key = shot_replay_key(game_id, transaction.sender, target_coord);
-  assert !fired_shots.member(key), "Replay violation: Coordinate already targeted";
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  const expected_shooter = game.current_turn == PlayerTurn.PLAYER_1 ? game.player1_id : game.player2_id;
+  assert(caller_id == expected_shooter, "Turn violation: Not your turn to fire");
+
+  const key = disclose(shot_replay_key(pub_game_id, caller_id, pub_coord));
+  assert(!fired_shots.member(key), "Replay violation: Coordinate already targeted");
   fired_shots.insert(key, true);
 
-  game.last_shot_coord = target_coord;
-  game.pending_shot_active = true;
-  game.last_action_timestamp = current_timestamp;
-
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    last_shot_coord: pub_coord,
+    pending_shot_active: true,
+    last_action_timestamp: pub_ts
+  });
 }
 
-/**
- * CIRCUIT 5: resolve_shot
- * Defending player submits CellLeaf + MerkleProof verified strictly inside the circuit.
- */
 export circuit resolve_shot(
   game_id: Bytes<32>,
   target_coord: Uint<8>,
@@ -287,186 +285,184 @@ export circuit resolve_shot(
   leaf: CellLeaf,
   proof: MerkleProof,
   current_timestamp: Uint<64>
-): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+): [] {
+  const pub_game_id = disclose(game_id);
+  const pub_coord = disclose(target_coord);
+  const pub_is_hit = disclose(is_hit);
+  const pub_ts = disclose(current_timestamp);
 
-  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
-  assert game.pending_shot_active, "No pending shot to resolve";
-  assert game.last_shot_coord == target_coord, "Target coordinate mismatch";
-  assert leaf.cell_index == target_coord, "Leaf index mismatch";
-  assert leaf.is_occupied == is_hit, "Claimed hit/miss does not match cell leaf";
-  assert !blockTimeLessThan(current_timestamp), "Timestamp ahead of block time";
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  var target_commitment: Bytes<32> = pad(32, "");
-  if (game.current_turn == PlayerTurn.PLAYER_1) {
-    assert transaction.sender == game.player2, "Only defending player (P2) can resolve";
-    target_commitment = game.board_commitment_p2;
-  } else {
-    assert transaction.sender == game.player1, "Only defending player (P1) can resolve";
-    target_commitment = game.board_commitment_p1;
-  }
+  assert(game.phase == GamePhase.IN_PROGRESS, "Game is not in progress");
+  assert(game.pending_shot_active, "No pending shot to resolve");
+  assert(game.last_shot_coord == pub_coord, "Target coordinate mismatch");
+  assert(leaf.cell_index == pub_coord, "Leaf index mismatch");
+  assert(leaf.is_occupied == pub_is_hit, "Claimed hit/miss does not match cell leaf");
+  assert(!blockTimeLt(pub_ts), "Timestamp ahead of block time");
 
-  const leaf_hash = hash_cell_leaf(leaf);
-  const computed_root = verify_merkle_root(leaf_hash, proof);
-  assert computed_root == target_commitment, "Invalid Merkle proof for defender commitment";
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  const expected_defender = game.current_turn == PlayerTurn.PLAYER_1 ? game.player2_id : game.player1_id;
+  assert(caller_id == expected_defender, "Only defending player can resolve shot");
 
-  game.pending_shot_active = false;
-  game.last_action_timestamp = current_timestamp;
+  const target_commitment =
+    game.current_turn == PlayerTurn.PLAYER_1 ? game.board_commitment_p2 : game.board_commitment_p1;
+  const computed_root = verify_merkle_root(hash_cell_leaf(leaf), proof);
+  assert(disclose(computed_root) == target_commitment, "Invalid Merkle proof for defender commitment");
 
-  if (is_hit) {
-    if (game.current_turn == PlayerTurn.PLAYER_1) {
-      game.p1_hits_against_p2 = game.p1_hits_against_p2 + 1;
-      if (game.p1_hits_against_p2 == TOTAL_FLEET_CELLS) {
-        game.phase = GamePhase.GAME_OVER;
-        game.winner = game.player1;
-      }
-    } else {
-      game.p2_hits_against_p1 = game.p2_hits_against_p1 + 1;
-      if (game.p2_hits_against_p1 == TOTAL_FLEET_CELLS) {
-        game.phase = GamePhase.GAME_OVER;
-        game.winner = game.player2;
-      }
-    }
-  }
+  const next_p1_hits = (
+    (game.current_turn == PlayerTurn.PLAYER_1 && pub_is_hit)
+      ? game.p1_hits_against_p2 + 1
+      : game.p1_hits_against_p2
+  ) as Uint<8>;
+  const next_p2_hits = (
+    (game.current_turn == PlayerTurn.PLAYER_2 && pub_is_hit)
+      ? game.p2_hits_against_p1 + 1
+      : game.p2_hits_against_p1
+  ) as Uint<8>;
 
-  if (game.phase != GamePhase.GAME_OVER) {
-    if (game.current_turn == PlayerTurn.PLAYER_1) {
-      game.current_turn = PlayerTurn.PLAYER_2;
-    } else {
-      game.current_turn = PlayerTurn.PLAYER_1;
-    }
-  }
+  const p1_won = next_p1_hits == 17;
+  const p2_won = next_p2_hits == 17;
+  const next_phase = (p1_won || p2_won) ? GamePhase.GAME_OVER : GamePhase.IN_PROGRESS;
+  const next_winner_id = p1_won ? game.player1_id : (p2_won ? game.player2_id : game.winner_id);
+  const next_winner_payout = p1_won ? game.player1_payout : (p2_won ? game.player2_payout : game.winner_payout);
+  const next_turn = (next_phase == GamePhase.GAME_OVER)
+    ? game.current_turn
+    : (game.current_turn == PlayerTurn.PLAYER_1 ? PlayerTurn.PLAYER_2 : PlayerTurn.PLAYER_1);
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    pending_shot_active: false,
+    last_action_timestamp: pub_ts,
+    p1_hits_against_p2: next_p1_hits,
+    p2_hits_against_p1: next_p2_hits,
+    phase: next_phase,
+    winner_id: next_winner_id,
+    winner_payout: next_winner_payout,
+    current_turn: next_turn
+  });
 }
 
-/**
- * CIRCUIT 6: forfeit_game
- * Allows either participant to voluntarily surrender and release the 2x pot to the opponent.
- */
-export circuit forfeit_game(game_id: Bytes<32>): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+export circuit forfeit_game(game_id: Bytes<32>): [] {
+  const pub_game_id = disclose(game_id);
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
-  assert !game.is_payout_claimed, "Escrow payout already claimed";
-  assert transaction.sender == game.player1 || transaction.sender == game.player2, "Not a match participant";
+  assert(game.phase == GamePhase.IN_PROGRESS, "Game is not in progress");
+  assert(!game.is_payout_claimed, "Escrow payout already claimed");
 
-  if (transaction.sender == game.player1) {
-    game.winner = game.player2;
-  } else {
-    game.winner = game.player1;
-  }
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  assert(caller_id == game.player1_id || caller_id == game.player2_id, "Not a match participant");
 
-  game.phase = GamePhase.GAME_OVER;
-  game.is_payout_claimed = true;
+  const winner_id = caller_id == game.player1_id ? game.player2_id : game.player1_id;
+  const winner_payout = caller_id == game.player1_id ? game.player2_payout : game.player1_payout;
 
   sendUnshielded(
-    escrow_token_color(),
-    disclose(game.total_escrow_night) as Uint<128>,
-    right<ContractAddress, UserAddress>(disclose(game.winner))
+    night_token_color(),
+    game.total_escrow_night as Uint<128>,
+    right<ContractAddress, UserAddress>(winner_payout)
   );
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    winner_id: winner_id,
+    winner_payout: winner_payout,
+    phase: GamePhase.GAME_OVER,
+    is_payout_claimed: true
+  });
 }
 
-/**
- * CIRCUIT 7: claim_winner_payout
- * Releases 2x total escrow pot to verified winner.
- */
-export circuit claim_winner_payout(game_id: Bytes<32>): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+export circuit claim_winner_payout(game_id: Bytes<32>): [] {
+  const pub_game_id = disclose(game_id);
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  assert game.phase == GamePhase.GAME_OVER, "Game is not completed";
-  assert !game.is_payout_claimed, "Payout already claimed";
-  assert transaction.sender == game.winner, "Only verified winner can claim escrow pot";
+  assert(game.phase == GamePhase.GAME_OVER, "Game is not completed");
+  assert(!game.is_payout_claimed, "Payout already claimed");
 
-  game.is_payout_claimed = true;
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  assert(caller_id == game.winner_id, "Only verified winner can claim escrow pot");
+
   sendUnshielded(
-    escrow_token_color(),
-    disclose(game.total_escrow_night) as Uint<128>,
-    right<ContractAddress, UserAddress>(disclose(game.winner))
+    night_token_color(),
+    game.total_escrow_night as Uint<128>,
+    right<ContractAddress, UserAddress>(game.winner_payout)
   );
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    is_payout_claimed: true
+  });
 }
 
-/**
- * CIRCUIT 8: claim_timeout_victory
- * If opponent fails to act within DISPUTE_TIMEOUT_SECONDS (60s), waiting player wins 2x pot.
- */
-export circuit claim_timeout_victory(game_id: Bytes<32>): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+export circuit claim_timeout_victory(game_id: Bytes<32>): [] {
+  const pub_game_id = disclose(game_id);
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  assert game.phase == GamePhase.IN_PROGRESS, "Game is not in progress";
-  assert !game.is_payout_claimed, "Escrow payout already claimed";
-  assert blockTimeGreaterThan(game.last_action_timestamp + DISPUTE_TIMEOUT_SECONDS), "60s dispute timeout not elapsed";
+  assert(game.phase == GamePhase.IN_PROGRESS, "Game is not in progress");
+  assert(!game.is_payout_claimed, "Escrow payout already claimed");
+  assert(blockTimeGt((game.last_action_timestamp + 60) as Uint<64>), "60s dispute timeout not elapsed");
 
-  if (game.pending_shot_active) {
-    if (game.current_turn == PlayerTurn.PLAYER_1) {
-      assert transaction.sender == game.player1, "Waiting on P2 to resolve; only P1 can claim";
-      game.winner = game.player1;
-    } else {
-      assert transaction.sender == game.player2, "Waiting on P1 to resolve; only P2 can claim";
-      game.winner = game.player2;
-    }
-  } else {
-    if (game.current_turn == PlayerTurn.PLAYER_1) {
-      assert transaction.sender == game.player2, "Waiting on P1 to fire; only P2 can claim";
-      game.winner = game.player2;
-    } else {
-      assert transaction.sender == game.player1, "Waiting on P2 to fire; only P1 can claim";
-      game.winner = game.player1;
-    }
-  }
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  const expected_claimer = game.pending_shot_active
+    ? (game.current_turn == PlayerTurn.PLAYER_1 ? game.player1_id : game.player2_id)
+    : (game.current_turn == PlayerTurn.PLAYER_1 ? game.player2_id : game.player1_id);
+  assert(caller_id == expected_claimer, "Not eligible to claim opponent inactivity timeout");
 
-  game.phase = GamePhase.GAME_OVER;
-  game.is_payout_claimed = true;
+  const winner_payout = caller_id == game.player1_id ? game.player1_payout : game.player2_payout;
+
   sendUnshielded(
-    escrow_token_color(),
-    disclose(game.total_escrow_night) as Uint<128>,
-    right<ContractAddress, UserAddress>(disclose(game.winner))
+    night_token_color(),
+    game.total_escrow_night as Uint<128>,
+    right<ContractAddress, UserAddress>(winner_payout)
   );
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    winner_id: caller_id,
+    winner_payout: winner_payout,
+    phase: GamePhase.GAME_OVER,
+    is_payout_claimed: true
+  });
 }
 
-/**
- * CIRCUIT 9: emergency_refund
- * After EMERGENCY_REFUND_TIMEOUT_SECONDS (1 hour) of inactivity, participants reclaim their stake.
- */
-export circuit emergency_refund(game_id: Bytes<32>): Void {
-  assert games.member(game_id), "Game does not exist";
-  var game = games.lookup(game_id);
+export circuit emergency_refund(game_id: Bytes<32>): [] {
+  const pub_game_id = disclose(game_id);
+  assert(games.member(pub_game_id), "Game does not exist");
+  const game = games.lookup(pub_game_id);
 
-  assert game.phase == GamePhase.WAITING_FOR_PLAYER2 || game.phase == GamePhase.IN_PROGRESS, "Cannot refund completed game";
-  assert transaction.sender == game.player1 || transaction.sender == game.player2, "Only match participants can claim refund";
-  assert blockTimeGreaterThan(game.last_action_timestamp + EMERGENCY_REFUND_TIMEOUT_SECONDS), "1-hour emergency refund timeout not elapsed";
+  assert(game.phase == GamePhase.WAITING_FOR_PLAYER2 || game.phase == GamePhase.IN_PROGRESS, "Cannot refund completed game");
+  assert(blockTimeGt((game.last_action_timestamp + 3600) as Uint<64>), "1-hour emergency refund timeout not elapsed");
 
-  if (transaction.sender == game.player1) {
-    assert game.p1_staked, "Player 1 stake already refunded";
-    game.p1_staked = false;
+  const caller_id = disclose(derive_player_id(player_secret_key()));
+  assert(caller_id == game.player1_id || caller_id == game.player2_id, "Only match participants can claim refund");
+
+  const is_p1 = caller_id == game.player1_id;
+  if (is_p1) {
+    assert(game.p1_staked, "Player 1 stake already refunded");
     sendUnshielded(
-      escrow_token_color(),
-      disclose(game.stake_amount_night) as Uint<128>,
-      right<ContractAddress, UserAddress>(disclose(game.player1))
+      night_token_color(),
+      game.stake_amount_night as Uint<128>,
+      right<ContractAddress, UserAddress>(game.player1_payout)
     );
   } else {
-    assert game.p2_staked, "Player 2 stake already refunded";
-    game.p2_staked = false;
+    assert(game.p2_staked, "Player 2 stake already refunded");
     sendUnshielded(
-      escrow_token_color(),
-      disclose(game.stake_amount_night) as Uint<128>,
-      right<ContractAddress, UserAddress>(disclose(game.player2))
+      night_token_color(),
+      game.stake_amount_night as Uint<128>,
+      right<ContractAddress, UserAddress>(game.player2_payout)
     );
   }
 
-  if (!game.p1_staked && !game.p2_staked) {
-    game.phase = GamePhase.REFUNDED;
-  }
+  const next_p1_staked = is_p1 ? false : game.p1_staked;
+  const next_p2_staked = is_p1 ? game.p2_staked : false;
+  const next_phase = (!next_p1_staked && !next_p2_staked) ? GamePhase.REFUNDED : game.phase;
 
-  games.insert(game_id, game);
+  games.insert(pub_game_id, GameState {
+    ...game,
+    p1_staked: next_p1_staked,
+    p2_staked: next_p2_staked,
+    phase: next_phase
+  });
 }
