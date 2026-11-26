@@ -1,10 +1,16 @@
 import { BOARD_SIZE, ShipPlacement } from '@battleship/shared';
+import {
+  CompactTypeBytes,
+  CompactTypeVector,
+  convertBigintToBytes,
+  persistentHash,
+} from '@midnight-ntwrk/compact-runtime';
 
 export interface CellLeafData {
   cellIndex: number;
   isOccupied: boolean;
   shipId: number; // 0 for empty, 1..5 for ships
-  salt: string;
+  salt: string;   // 64 hex chars (32 bytes)
 }
 
 export interface MerkleProof {
@@ -20,16 +26,53 @@ export interface BoardMerkleTreeResult {
   treeLevels: string[][];
 }
 
-// Browser-compatible SHA-256 hex digest
-async function sha256Hex(message: string): Promise<string> {
-  const msgUint8 = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+// Match compiled contracts/managed/battleship/contract/index.js descriptors byte-for-byte
+const BYTES32_TYPE = new CompactTypeBytes(32);
+const VECTOR2_BYTES32_TYPE = new CompactTypeVector(2, BYTES32_TYPE);
+const VECTOR5_BYTES32_TYPE = new CompactTypeVector(5, BYTES32_TYPE);
+
+function padAsciiBytes32(label: string): Uint8Array {
+  const out = new Uint8Array(32);
+  const encoded = new TextEncoder().encode(label);
+  out.set(encoded.subarray(0, 32), 0);
+  return out;
 }
 
+const LEAF_DOMAIN_TAG = padAsciiBytes32('battleship:leaf:v1');
+
+export function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export function hexToBytes32(hex: string): Uint8Array {
+  const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
+  const padded = clean.padStart(64, '0').slice(0, 64);
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    out[i] = parseInt(padded.slice(i * 2, i * 2 + 2), 16) || 0;
+  }
+  return out;
+}
+
+function hashPairCompact(left: Uint8Array, right: Uint8Array): Uint8Array {
+  return persistentHash(VECTOR2_BYTES32_TYPE, [left, right]);
+}
+
+/**
+ * Hashes a CellLeaf using Midnight Compact's exact `persistentHash` framing (`battleship:leaf:v1`).
+ */
 export async function hashCellLeaf(leaf: CellLeafData): Promise<string> {
-  return sha256Hex(`battleship:leaf:v1:${leaf.cellIndex}:${leaf.isOccupied ? 1 : 0}:${leaf.shipId}:${leaf.salt}`);
+  const occupied = leaf.isOccupied ? 1n : 0n;
+  const digest = persistentHash(VECTOR5_BYTES32_TYPE, [
+    LEAF_DOMAIN_TAG,
+    convertBigintToBytes(32, BigInt(leaf.cellIndex), 'merkle.ts:cellIndex'),
+    convertBigintToBytes(32, occupied, 'merkle.ts:occupied'),
+    convertBigintToBytes(32, BigInt(leaf.shipId), 'merkle.ts:shipId'),
+    hexToBytes32(leaf.salt),
+  ]);
+  return bytesToHex(digest);
 }
 
 // Map ShipType names to Uint8 ShipId numbers (1..5)
@@ -56,12 +99,11 @@ export function getShipId(type: string): number {
 export function generateMatchIdBytes32(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return `0x${Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  return `0x${bytesToHex(bytes)}`;
 }
 
 /**
- * Builds a 100-leaf Merkle Tree for a 10x10 fleet placement.
- * Computes cell leaves (indices 0..99), assigns secret salts, and calculates the 32-byte Merkle root (`board_commitment`).
+ * Builds a 100-leaf Merkle Tree using Midnight Compact's `persistentHash` circuit math.
  */
 export async function buildBoardMerkleTree(ships: ShipPlacement[]): Promise<BoardMerkleTreeResult> {
   const occupiedMap = new Map<number, number>();
@@ -82,23 +124,24 @@ export async function buildBoardMerkleTree(ships: ShipPlacement[]): Promise<Boar
     const isOccupied = shipId > 0;
     const saltArray = new Uint8Array(32);
     crypto.getRandomValues(saltArray);
-    const salt = Array.from(saltArray).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const salt = bytesToHex(saltArray);
 
     const leaf: CellLeafData = {
       cellIndex: i,
       isOccupied,
       shipId,
-      salt
+      salt,
     };
 
     leaves.push(leaf);
     leafHashes.push(await hashCellLeaf(leaf));
   }
 
-  // Pad leaves up to 128 (next power of 2 >= 100 cells) for 7-level Merkle tree (2^7 = 128)
+  // Pad leaves up to 128 (2^7) for 7-level Compact Merkle verification
   const paddedHashes = [...leafHashes];
   while (paddedHashes.length < 128) {
-    const padHash = await sha256Hex(`pad_${paddedHashes.length}`);
+    const padTag = padAsciiBytes32(`battleship:pad:${paddedHashes.length}`);
+    const padHash = bytesToHex(hashPairCompact(padTag, new Uint8Array(32)));
     paddedHashes.push(padHash);
   }
 
@@ -108,20 +151,21 @@ export async function buildBoardMerkleTree(ships: ShipPlacement[]): Promise<Boar
   while (currentLevel.length > 1) {
     const nextLevel: string[] = [];
     for (let i = 0; i < currentLevel.length; i += 2) {
-      const parentHash = await sha256Hex(currentLevel[i] + currentLevel[i + 1]);
-      nextLevel.push(parentHash);
+      const parentBytes = hashPairCompact(
+        hexToBytes32(currentLevel[i]),
+        hexToBytes32(currentLevel[i + 1])
+      );
+      nextLevel.push(bytesToHex(parentBytes));
     }
     treeLevels.push(nextLevel);
     currentLevel = nextLevel;
   }
 
-  const root = `0x${currentLevel[0]}`;
-
   return {
-    root,
+    root: `0x${currentLevel[0]}`,
     leaves,
     hashedLeaves: leafHashes,
-    treeLevels
+    treeLevels,
   };
 }
 
@@ -151,12 +195,12 @@ export function generateCellMerkleProof(
   return {
     pathHashes,
     pathDirections,
-    pathIndices
+    pathIndices,
   };
 }
 
 /**
- * Verifies a cell leaf + Merkle inclusion/exclusion path against an expected 0x-prefixed root.
+ * Verifies a cell leaf + Merkle inclusion/exclusion path using Compact's `persistentHash`.
  */
 export async function verifyCellMerkleProof(
   leaf: CellLeafData,
@@ -164,15 +208,15 @@ export async function verifyCellMerkleProof(
   expectedRoot: string
 ): Promise<boolean> {
   if (proof.pathHashes.length !== 7 || proof.pathDirections.length !== 7) return false;
-  let currHash = await hashCellLeaf(leaf);
+  let currBytes = hexToBytes32(await hashCellLeaf(leaf));
 
   for (let i = 0; i < proof.pathHashes.length; i++) {
-    const siblingHash = proof.pathHashes[i];
+    const siblingBytes = hexToBytes32(proof.pathHashes[i]);
     const isRight = proof.pathDirections[i];
-    currHash = isRight
-      ? await sha256Hex(siblingHash + currHash)
-      : await sha256Hex(currHash + siblingHash);
+    currBytes = isRight
+      ? hashPairCompact(siblingBytes, currBytes)
+      : hashPairCompact(currBytes, siblingBytes);
   }
 
-  return `0x${currHash}` === expectedRoot.toLowerCase();
+  return `0x${bytesToHex(currBytes)}` === expectedRoot.toLowerCase();
 }
