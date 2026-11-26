@@ -1,4 +1,4 @@
-import { getEnabledLaceApi, getLaceProvider } from '../config/midnightWallet';
+import { ACTIVE_MIDNIGHT_NETWORK, getEnabledLaceApi, getLaceProvider, isLaceWalletAvailable } from '../config/midnightWallet';
 import { BATTLESHIP_CONTRACT_ADDRESS, MIDNIGHT_PROOF_SERVER_URL } from '../config/contract';
 import { CellLeafData, MerkleProof } from '../utils/merkle';
 
@@ -13,6 +13,16 @@ export interface CompactGameRecord {
   p1Hits: number;
   p2Hits: number;
   winner?: string;
+}
+
+export interface ProtocolReadiness {
+  networkKey: string;
+  networkName: string;
+  contractDeployed: boolean;
+  proofServerOnline: boolean;
+  laceAvailable: boolean;
+  rpcConfigured: boolean;
+  readyForOnChain: boolean;
 }
 
 /**
@@ -32,6 +42,23 @@ export async function checkProofServerHealth(): Promise<boolean> {
   }
 }
 
+export async function getProtocolReadiness(): Promise<ProtocolReadiness> {
+  const proofServerOnline = await checkProofServerHealth();
+  const contractDeployed = !!BATTLESHIP_CONTRACT_ADDRESS;
+  const laceAvailable = isLaceWalletAvailable();
+  const rpcConfigured = !!ACTIVE_MIDNIGHT_NETWORK.rpcUrl && !!ACTIVE_MIDNIGHT_NETWORK.indexerUrl;
+
+  return {
+    networkKey: ACTIVE_MIDNIGHT_NETWORK.key,
+    networkName: ACTIVE_MIDNIGHT_NETWORK.name,
+    contractDeployed,
+    proofServerOnline,
+    laceAvailable,
+    rpcConfigured,
+    readyForOnChain: contractDeployed && proofServerOnline && laceAvailable && rpcConfigured,
+  };
+}
+
 export class CompactContractService {
   /**
    * Executes a Midnight Compact circuit using the compiled contract interface
@@ -39,13 +66,19 @@ export class CompactContractService {
    *
    * NOTE: Does NOT mock transactions or substitute `signData` message signatures
    * for on-chain extrinsics. Requires `compactc` compilation, a deployed
-   * `VITE_MIDNIGHT_CONTRACT_ADDRESS`, and an active Proof Server on :6300.
+   * contract address on the active network, and an active Proof Server on :6300.
    */
   private static async invokeCircuit(circuitName: string, args: any[]): Promise<string> {
+    if (ACTIVE_MIDNIGHT_NETWORK.requiresBlockfrost && !ACTIVE_MIDNIGHT_NETWORK.rpcUrl) {
+      throw new Error(
+        `${ACTIVE_MIDNIGHT_NETWORK.name} Endpoint Missing: Configure Blockfrost Midnight RPC/Indexer URLs in .env before transacting on ${ACTIVE_MIDNIGHT_NETWORK.shortLabel}.`
+      );
+    }
+
     if (!BATTLESHIP_CONTRACT_ADDRESS) {
       throw new Error(
-        `Midnight Contract Not Deployed: VITE_MIDNIGHT_CONTRACT_ADDRESS is empty. ` +
-          `Start Docker Desktop, run "npm run setup:stack --workspace=contracts", compile contracts/compact/battleship.compact with compactc, and deploy it to Midnight Testnet before playing staked matches.`
+        `Midnight Contract Not Deployed on ${ACTIVE_MIDNIGHT_NETWORK.name}: ` +
+          `Start Docker Desktop, run "npm run setup:stack --workspace=contracts", compile contracts/compact/battleship.compact with compactc, and set VITE_MIDNIGHT_CONTRACT_ADDRESS.`
       );
     }
 
@@ -62,7 +95,7 @@ export class CompactContractService {
       if (rawProvider && (typeof rawProvider.connect === 'function' || typeof rawProvider.enable === 'function')) {
         api =
           typeof rawProvider.connect === 'function'
-            ? await rawProvider.connect('midnight-testnet-preview')
+            ? await rawProvider.connect(ACTIVE_MIDNIGHT_NETWORK.id)
             : await rawProvider.enable();
       }
     }
@@ -73,7 +106,6 @@ export class CompactContractService {
       );
     }
 
-    // Native Midnight DApp Connector / compiled Midnight.js contract hooks
     if (typeof api.submitCircuit === 'function') {
       return await api.submitCircuit(circuitName, args);
     }
@@ -101,6 +133,10 @@ export class CompactContractService {
       stakeAmountNight,
       Math.floor(Date.now() / 1000)
     ]);
+  }
+
+  static async cancelWaitingGame(gameIdBytes32: string): Promise<string> {
+    return this.invokeCircuit('cancel_waiting_game', [gameIdBytes32]);
   }
 
   static async joinGame(gameIdBytes32: string, boardCommitment: string): Promise<string> {
@@ -134,6 +170,10 @@ export class CompactContractService {
       proof,
       Math.floor(Date.now() / 1000)
     ]);
+  }
+
+  static async forfeitGame(gameIdBytes32: string): Promise<string> {
+    return this.invokeCircuit('forfeit_game', [gameIdBytes32]);
   }
 
   static async claimWinnerPayout(gameIdBytes32: string): Promise<string> {

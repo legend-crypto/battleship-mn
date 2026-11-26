@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WalletConnect } from './WalletConnect';
-import { ChevronDown, Menu, X, Home, FileText } from 'lucide-react';
+import { ChevronDown, Menu, X, Home, FileText, ExternalLink, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ACTIVE_MIDNIGHT_NETWORK } from '../config/midnightWallet';
+import { getProtocolReadiness, ProtocolReadiness } from '../services/compactContractService';
 
 interface NavbarProps {
   activeTab: 'PLAY' | 'MATCHES' | 'LEADERBOARD' | 'WHITEPAPER' | 'ABOUT';
@@ -11,6 +13,13 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onGoHome, isDarkTheme = false }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [networkPopoverOpen, setNetworkPopoverOpen] = useState(false);
+  const [readiness, setReadiness] = useState<ProtocolReadiness | null>(null);
+
+  useEffect(() => {
+    if (!networkPopoverOpen) return;
+    getProtocolReadiness().then(setReadiness).catch(() => {});
+  }, [networkPopoverOpen]);
 
   const handleLogoClick = () => {
     if (onGoHome) {
@@ -30,10 +39,10 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onGoHome
   };
 
   return (
-    <header className={`w-full py-4 px-4 sm:px-8 lg:px-12 flex items-center justify-between z-40 transition-colors ${
+    <header className={`relative w-full py-4 px-4 sm:px-8 lg:px-12 flex items-center justify-between z-40 transition-colors ${
       isDarkTheme ? 'bg-[#050B0E]/95 border-b border-slate-800/80 backdrop-blur-md' : 'bg-[#F4F7F6]/90 backdrop-blur-sm border-b border-slate-200/80'
     }`}>
-      {/* Brand Logo & Ultra-Readable Title */}
+      {/* Brand Logo & Title */}
       <div
         className="flex items-center space-x-3 cursor-pointer group"
         onClick={handleLogoClick}
@@ -115,18 +124,84 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onGoHome
         </button>
       </nav>
 
-      {/* Network Selector Pill & Wallet Connection Button */}
-      <div className="hidden sm:flex items-center space-x-4">
-        {/* Network Selector Pill */}
-        <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border text-xs font-mono font-bold ${
-          isDarkTheme ? 'bg-[#091015] border-slate-800 text-slate-200' : 'bg-white border-slate-300 text-slate-900 shadow-sm'
-        }`}>
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>MIDNIGHT NETWORK</span>
+      {/* Network Status Pill & Wallet Connection Button */}
+      <div className="hidden sm:flex items-center space-x-4 relative">
+        <button
+          onClick={() => setNetworkPopoverOpen((o) => !o)}
+          className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border text-xs font-mono font-bold cursor-pointer transition ${
+            isDarkTheme ? 'bg-[#091015] border-slate-800 text-slate-200 hover:border-emerald-500/50' : 'bg-white border-slate-300 text-slate-900 shadow-sm hover:border-emerald-500'
+          }`}
+          title="Inspect Midnight network & prover readiness"
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${
+              ACTIVE_MIDNIGHT_NETWORK.isProduction ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400 animate-pulse'
+            }`}
+          ></span>
+          <span>{ACTIVE_MIDNIGHT_NETWORK.shortLabel}</span>
           <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-        </div>
+        </button>
 
-        {/* Wallet Connect Button */}
+        {networkPopoverOpen && (
+          <div className="absolute top-12 right-0 w-80 bg-[#091015] border border-slate-800 rounded-2xl p-4 shadow-2xl text-xs font-mono text-slate-200 z-50 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="font-black text-white">{ACTIVE_MIDNIGHT_NETWORK.name}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-300">
+                {ACTIVE_MIDNIGHT_NETWORK.isProduction ? 'PRODUCTION' : 'TESTNET'}
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Compact Contract:</span>
+                {readiness?.contractDeployed ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Deployed
+                  </span>
+                ) : (
+                  <span className="text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Not Deployed
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Local Proof Server (:6300):</span>
+                {readiness?.proofServerOnline ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Online
+                  </span>
+                ) : (
+                  <span className="text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Offline
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Lace Extension:</span>
+                {readiness?.laceAvailable ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Detected
+                  </span>
+                ) : (
+                  <span className="text-slate-400">Not Detected</span>
+                )}
+              </div>
+            </div>
+
+            <a
+              href={ACTIVE_MIDNIGHT_NETWORK.blockExplorer}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full py-2 bg-[#050B0E] hover:bg-slate-800 border border-slate-800 rounded-xl flex items-center justify-center gap-1.5 text-emerald-400 text-[11px]"
+            >
+              <span>Open Midnight Explorer</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+
         <WalletConnect />
       </div>
 
