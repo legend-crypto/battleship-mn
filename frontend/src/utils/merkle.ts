@@ -9,6 +9,7 @@ export interface CellLeafData {
 
 export interface MerkleProof {
   pathHashes: string[];
+  pathDirections: boolean[]; // true if current node is right child (aligns with Compact Vector<7, Boolean>)
   pathIndices: number;
 }
 
@@ -28,7 +29,7 @@ async function sha256Hex(message: string): Promise<string> {
 }
 
 export async function hashCellLeaf(leaf: CellLeafData): Promise<string> {
-  return sha256Hex(`${leaf.cellIndex}:${leaf.isOccupied ? 1 : 0}:${leaf.shipId}:${leaf.salt}`);
+  return sha256Hex(`battleship:leaf:v1:${leaf.cellIndex}:${leaf.isOccupied ? 1 : 0}:${leaf.shipId}:${leaf.salt}`);
 }
 
 // Map ShipType names to Uint8 ShipId numbers (1..5)
@@ -79,7 +80,7 @@ export async function buildBoardMerkleTree(ships: ShipPlacement[]): Promise<Boar
   for (let i = 0; i < 100; i++) {
     const shipId = occupiedMap.get(i) || 0;
     const isOccupied = shipId > 0;
-    const saltArray = new Uint8Array(16);
+    const saltArray = new Uint8Array(32);
     crypto.getRandomValues(saltArray);
     const salt = Array.from(saltArray).map((b) => b.toString(16).padStart(2, '0')).join('');
 
@@ -132,6 +133,7 @@ export function generateCellMerkleProof(
   treeLevels: string[][]
 ): MerkleProof {
   const pathHashes: string[] = [];
+  const pathDirections: boolean[] = [];
   let pathIndices = 0;
   let currIdx = cellIndex;
 
@@ -139,6 +141,7 @@ export function generateCellMerkleProof(
     const isRight = currIdx % 2 === 1;
     const siblingIdx = isRight ? currIdx - 1 : currIdx + 1;
     pathHashes.push(treeLevels[level][siblingIdx]);
+    pathDirections.push(isRight);
     if (isRight) {
       pathIndices |= 1 << level;
     }
@@ -147,6 +150,7 @@ export function generateCellMerkleProof(
 
   return {
     pathHashes,
+    pathDirections,
     pathIndices
   };
 }
@@ -159,12 +163,12 @@ export async function verifyCellMerkleProof(
   proof: MerkleProof,
   expectedRoot: string
 ): Promise<boolean> {
-  if (proof.pathHashes.length !== 7) return false;
+  if (proof.pathHashes.length !== 7 || proof.pathDirections.length !== 7) return false;
   let currHash = await hashCellLeaf(leaf);
 
   for (let i = 0; i < proof.pathHashes.length; i++) {
     const siblingHash = proof.pathHashes[i];
-    const isRight = (proof.pathIndices & (1 << i)) !== 0;
+    const isRight = proof.pathDirections[i];
     currHash = isRight
       ? await sha256Hex(siblingHash + currHash)
       : await sha256Hex(currHash + siblingHash);
