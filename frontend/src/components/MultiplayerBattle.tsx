@@ -145,7 +145,8 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   const myCommitted = isHost ? !!liveMatch?.hostReady : !!liveMatch?.guestReady;
   const oppCommitted = isHost ? !!liveMatch?.guestReady : !!liveMatch?.hostReady;
 
-  const phase: 'PLACEMENT' | 'STAKING' | 'PLAYING' | 'FINISHED' = useMemo(() => {
+  const phase: 'PLACEMENT' | 'STAKING' | 'PLAYING' | 'FINISHED' | 'CANCELLED' = useMemo(() => {
+    if (liveMatch?.status === 'CANCELLED') return 'CANCELLED';
     if (liveMatch?.status === 'FINISHED') return 'FINISHED';
     if (liveMatch?.status === 'PLAYING') return 'PLAYING';
     if (!myCommitted) return 'PLACEMENT';
@@ -558,7 +559,22 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
       )}
 
       {/* Main View Area */}
-      {phase === 'STAKING' ? (
+      {phase === 'CANCELLED' ? (
+        <div className="flex flex-col items-center justify-center py-12 w-full max-w-lg mx-auto">
+          <div className="w-full bg-[#091015] border border-slate-800 p-8 rounded-3xl shadow-2xl text-center space-y-4">
+            <h3 className="text-lg font-black text-amber-400">MATCH LOBBY CANCELLED</h3>
+            <p className="text-xs text-slate-400 font-sans">
+              This match lobby (#{matchData.matchCode}) was closed before battle started. Any locked waiting stake can be reclaimed via <code className="text-emerald-400">cancel_waiting_game</code>.
+            </p>
+            <button
+              onClick={onExit}
+              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition cursor-pointer"
+            >
+              RETURN TO MULTIPLAYER LOBBY
+            </button>
+          </div>
+        </div>
+      ) : phase === 'STAKING' ? (
         <div className="flex flex-col items-center justify-center py-6 w-full max-w-2xl mx-auto space-y-6">
           <div className="w-full bg-[#091015] border-2 border-emerald-500/40 p-6 rounded-3xl shadow-2xl text-center space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-xs font-bold uppercase tracking-widest">
