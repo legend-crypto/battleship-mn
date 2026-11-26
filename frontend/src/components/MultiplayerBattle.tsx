@@ -81,6 +81,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
   const resolveShotMutation = useMutation(api.matches.resolveShot);
   const claimTimeoutMutation = useMutation(api.matches.claimTimeoutVictory);
   const recordPayoutMutation = useMutation(api.matches.recordPayout);
+  const forfeitMatchMutation = useMutation(api.matches.forfeitMatch);
 
   // Private local board & Merkle tree (never uploaded to Convex)
   const [myBoard, setMyBoard] = useState<BoardState>(() => {
@@ -384,6 +385,26 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
     }
   };
 
+  const handleSurrenderMatch = async () => {
+    setActionError(null);
+    try {
+      let txHash: string | undefined;
+      if (!isFreeMatch && phase === 'PLAYING') {
+        txHash = await CompactContractService.forfeitGame(matchData.matchIdBytes32);
+      }
+      await forfeitMatchMutation({
+        matchIdBytes32: matchData.matchIdBytes32,
+        playerToken: matchData.playerToken,
+        txHash
+      });
+      if (phase !== 'PLAYING') {
+        onExit();
+      }
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to surrender match.');
+    }
+  };
+
   const handleCopyMatchCode = () => {
     navigator.clipboard.writeText(matchData.matchCode);
     setCopied(true);
@@ -613,7 +634,7 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
         /* Widescreen Console View */
         <div className="grid grid-cols-12 gap-6 w-full items-stretch flex-1">
           <div className="col-span-12 lg:col-span-3">
-            <FleetPanel ships={myBoard.ships} onSurrender={onExit} />
+            <FleetPanel ships={myBoard.ships} onSurrender={handleSurrenderMatch} />
           </div>
 
           <div className="col-span-12 lg:col-span-6 flex flex-col items-center justify-center">

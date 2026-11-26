@@ -455,46 +455,35 @@ export const LocalAIGame: React.FC<LocalAIGameProps> = ({ onBackToMenu }) => {
               </button>
             </div>
 
-            {/* MODE 2: STAKED AI BATTLE */}
-            <div className="bg-[#091015] border-2 border-emerald-500/50 p-6 rounded-2xl shadow-2xl flex flex-col justify-between space-y-6 hover:border-emerald-500 transition relative overflow-hidden">
-              <div className="absolute top-3 right-3 text-[9px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500 px-2 py-0.5 rounded uppercase">
-                PLAY & EARN
+            {/* MODE 2: STAKED AI BATTLE (Awaiting Funded AI Escrow Signer) */}
+            <div className="bg-[#091015] border border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col justify-between space-y-6 relative overflow-hidden opacity-90">
+              <div className="absolute top-3 right-3 text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded uppercase">
+                REQUIRES AI ESCROW SIGNER
               </div>
 
               <div className="space-y-4">
-                <div className="w-12 h-12 rounded-xl bg-emerald-950 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <div className="w-12 h-12 rounded-xl bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                   <Swords className="w-6 h-6 text-emerald-400" />
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-white">STAKED MIDNIGHT ZK BATTLE</h3>
                   <p className="text-xs text-slate-400 font-sans mt-1">
-                    Stake up to <strong className="text-emerald-400">0.10 NIGHT tokens</strong> in escrow. Defeat Midnight's ZK AI Agent and claim 2x pooled tokens!
+                    On-chain AI staking requires a funded server-side AI signer to co-sign <code className="text-emerald-400">join_game</code> &amp; <code className="text-emerald-400">resolve_shot</code>. For live PvP staking or free PvP, use Multiplayer mode.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider flex justify-between">
-                    <span>Select Stake per Match (Max 0.10 NIGHT)</span>
-                    <Coins className="w-3.5 h-3.5 text-emerald-400" />
-                  </label>
-                  <select
-                    value={stakeAmountEth}
-                    onChange={(e) => setStakeAmountEth(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-[#050B0E] border border-slate-800 rounded-xl text-xs font-mono font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="0.01">0.01 NIGHT Tokens (Prize Pool: 0.02 NIGHT)</option>
-                    <option value="0.05">0.05 NIGHT Tokens (Prize Pool: 0.10 NIGHT)</option>
-                    <option value="0.1">0.10 NIGHT Tokens (Max Stake: 0.20 NIGHT)</option>
-                  </select>
+                <div className="p-3 bg-[#050B0E] rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                  <div>• Status: <strong className="text-amber-300">Pending House Escrow Signer</strong></div>
+                  <div>• Alternative: <strong className="text-emerald-400">Multiplayer Lobby / Free Practice</strong></div>
                 </div>
               </div>
 
               <button
-                onClick={handleSelectStakedMode}
-                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
+                disabled
+                className="w-full py-3.5 bg-slate-800 text-slate-400 font-black rounded-xl text-xs uppercase tracking-wider border border-slate-700 flex items-center justify-center gap-2 cursor-not-allowed"
               >
                 <Lock className="w-4 h-4" />
-                <span>STAKE {stakeAmountEth} NIGHT & DEPLOY FLEET</span>
+                <span>AI ESCROW SIGNER NOT CONFIGURED</span>
               </button>
             </div>
           </div>

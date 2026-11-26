@@ -597,3 +597,66 @@ export const recordPayout = mutation({
     });
   }
 });
+
+// Voluntary forfeit / surrender in an active match
+export const forfeitMatch = mutation({
+  args: {
+    matchIdBytes32: v.string(),
+    playerToken: v.string(),
+    txHash: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const match = await ctx.db
+      .query('matches')
+      .withIndex('by_matchId', (q) => q.eq('matchIdBytes32', args.matchIdBytes32))
+      .first();
+
+    if (!match) throw new Error('Match not found');
+    if (match.status === 'FINISHED' || match.status === 'CANCELLED') {
+      return;
+    }
+
+    const callerRole = resolveCallerRole(match, args.playerToken);
+    const now = Date.now();
+
+    if (match.status === 'OPEN' || match.status === 'WAITING') {
+      await ctx.db.patch(match._id, {
+        status: 'CANCELLED',
+        lastActionAt: now,
+        logs: [
+          {
+            id: `${now}-cancel`,
+            sender: 'PLAYER',
+            message: 'Host cancelled open match lobby.',
+            timestamp: formatLogTime(),
+            type: 'info'
+          },
+          ...match.logs
+        ]
+      });
+      return;
+    }
+
+    const winnerRole: 'host' | 'guest' = callerRole === 'host' ? 'guest' : 'host';
+    const winnerAddress = winnerRole === 'host' ? match.hostAddress : match.guestAddress;
+
+    await ctx.db.patch(match._id, {
+      status: 'FINISHED',
+      winnerRole,
+      winnerAddress,
+      payoutTxHash: args.txHash,
+      lastActionAt: now,
+      logs: [
+        {
+          id: `${now}-forfeit`,
+          sender: callerRole === 'host' ? 'PLAYER' : 'OPPONENT',
+          message: `${callerRole === 'host' ? 'Host' : 'Guest'} surrendered — ${winnerRole === 'host' ? 'Host' : 'Guest'} wins!`,
+          timestamp: formatLogTime(),
+          type: 'sunk'
+        },
+        ...match.logs
+      ]
+    });
+  }
+});
+
