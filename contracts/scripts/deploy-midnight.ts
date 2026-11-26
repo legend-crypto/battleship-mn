@@ -171,17 +171,67 @@ function parseHexSeed(raw: string, varName: string): Uint8Array {
   return Uint8Array.from(Buffer.from(cleaned, 'hex'));
 }
 
-function resolveMasterSeed(): { masterSeed: Uint8Array; sourceLabel: string; isHexKeyFallback: boolean } {
-  const mnemonic = process.env.MIDNIGHT_MNEMONIC?.trim();
-  if (mnemonic) {
-    const normalized = mnemonic.split(/\s+/).join(' ');
-    if (!bip39.validateMnemonic(normalized)) {
-      throw new Error('MIDNIGHT_MNEMONIC is not a valid BIP-39 mnemonic phrase.');
+function readMultilineEnvFallback(varName: string): string | undefined {
+  const candidates = [
+    path.resolve(__dirname, '../../.env'),
+    path.resolve(__dirname, '../.env'),
+  ];
+  for (const envPath of candidates) {
+    if (!fs.existsSync(envPath)) continue;
+    const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+    const startIdx = lines.findIndex((line) => line.startsWith(`${varName}=`));
+    if (startIdx === -1) continue;
+    const collected: string[] = [lines[startIdx].slice(varName.length + 1)];
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(lines[i])) break;
+      collected.push(lines[i]);
     }
-    const seed = bip39.mnemonicToSeedSync(normalized);
+    return collected.join('\n').trim();
+  }
+  return undefined;
+}
+
+function normalizeLaceMnemonic(raw: string): { phrase: string; wordCount: number; reordered: boolean } {
+  const unquoted = raw.trim().replace(/^["']+/, '').replace(/["']+$/, '').trim();
+  const numberedMatches = Array.from(unquoted.matchAll(/\b(\d{1,2})\.\s*([a-zA-Z]+)\b/g));
+  if (numberedMatches.length >= 12) {
+    const ordered = numberedMatches
+      .map((m) => ({ idx: Number.parseInt(m[1], 10), word: m[2].toLowerCase() }))
+      .sort((a, b) => a.idx - b.idx);
+    const reordered = ordered.some(
+      (item, pos) => item.idx !== Number.parseInt(numberedMatches[pos][1], 10)
+    );
+    const phrase = ordered.map((item) => item.word).join(' ');
+    return { phrase, wordCount: ordered.length, reordered };
+  }
+
+  const words = unquoted
+    .replace(/\b\d{1,2}\.\s*/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.trim().toLowerCase())
+    .filter(Boolean);
+  return { phrase: words.join(' '), wordCount: words.length, reordered: false };
+}
+
+function resolveMasterSeed(): { masterSeed: Uint8Array; sourceLabel: string; isHexKeyFallback: boolean } {
+  const rawEnvMnemonic = process.env.MIDNIGHT_MNEMONIC?.trim();
+  const multilineFallback = readMultilineEnvFallback('MIDNIGHT_MNEMONIC');
+  const candidateMnemonic =
+    multilineFallback && multilineFallback.length > (rawEnvMnemonic?.length ?? 0)
+      ? multilineFallback
+      : rawEnvMnemonic;
+
+  if (candidateMnemonic) {
+    const { phrase, wordCount, reordered } = normalizeLaceMnemonic(candidateMnemonic);
+    if (!bip39.validateMnemonic(phrase)) {
+      throw new Error(
+        `MIDNIGHT_MNEMONIC failed BIP-39 checksum validation (parsed ${wordCount} words; expected valid 12 or 24-word Lace phrase).`
+      );
+    }
+    const seed = bip39.mnemonicToSeedSync(phrase);
     return {
       masterSeed: Uint8Array.from(seed),
-      sourceLabel: 'MIDNIGHT_MNEMONIC (BIP-39 -> 64-byte seed)',
+      sourceLabel: `MIDNIGHT_MNEMONIC (${wordCount} BIP-39 words${reordered ? ', column-sorted 01..' + wordCount : ''} -> 64-byte seed)`,
       isHexKeyFallback: false,
     };
   }
