@@ -1,0 +1,46 @@
+name: Battleship MN CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Build, Typecheck & Protocol Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Build shared engine
+        run: npm run build --workspace=shared
+
+      - name: Run shared engine & AI unit tests
+        run: npm test --workspace=shared
+
+      - name: Typecheck contracts & scripts
+        run: npx tsc --noEmit -p contracts/tsconfig.json
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Run frontend unit tests
+        run: npm test --workspace=frontend
+
+      - name: Build frontend bundle (Vite + WASM)
+        run: npm run build --workspace=frontend
+
+      - name: Run compiled Compact contract QA suite
+        run: npm run test:qa --workspace=contracts
