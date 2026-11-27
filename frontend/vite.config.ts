@@ -43,11 +43,20 @@ export default defineConfig({
     target: 'esnext',
   },
   optimizeDeps: {
-    exclude: [
+    include: [
       '@midnight-ntwrk/compact-runtime',
-      '@midnightntwrk/onchain-runtime-v4',
-      '@midnightntwrk/ledger-v9',
+      'object-inspect',
     ],
+    exclude: [
+      '@midnightntwrk/onchain-runtime-v4',
+      '@midnightntwrk/ledger-v8',
+      '@midnightntwrk/ledger-v9',
+      '@midnightntwrk/zkir-v2',
+      '@midnightntwrk/zkir-v3',
+    ],
+    esbuildOptions: {
+      target: 'esnext',
+    },
   },
   resolve: {
     alias: {
