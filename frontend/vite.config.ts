@@ -1,6 +1,7 @@
 import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import fs from 'fs';
 
@@ -38,7 +39,19 @@ function midnightZkAssetsPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), wasm(), midnightZkAssetsPlugin()],
+  plugins: [
+    react(),
+    wasm(),
+    nodePolyfills({
+      include: ['events', 'assert', 'buffer', 'process', 'util'],
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+    }),
+    midnightZkAssetsPlugin(),
+  ],
   build: {
     target: 'esnext',
   },
