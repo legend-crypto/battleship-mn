@@ -292,14 +292,6 @@ export const MultiplayerBattle: React.FC<MultiplayerBattleProps> = ({ matchData,
         playerToken: matchData.playerToken,
         boardCommitment: merkleResult.root
       });
-
-      if (isFreeMatch) {
-        await confirmStakeMutation({
-          matchIdBytes32: matchData.matchIdBytes32,
-          playerToken: matchData.playerToken,
-          txHash: 'free_zk_match'
-        });
-      }
     } catch (err: any) {
       setActionError(err?.message || 'Failed to submit fleet commitment.');
     }

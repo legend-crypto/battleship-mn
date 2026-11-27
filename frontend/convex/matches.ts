@@ -21,6 +21,48 @@ function resolveCallerRole(
   throw new Error('Unauthorized: invalid player session token for this match');
 }
 
+function isFreeStake(stakeAmountEth: string): boolean {
+  return Number(stakeAmountEth) === 0;
+}
+
+type MatchStatus =
+  | 'OPEN'
+  | 'WAITING'
+  | 'STAKING'
+  | 'PLACEMENT'
+  | 'PLAYING'
+  | 'IN_PROGRESS'
+  | 'FINISHED'
+  | 'CANCELLED';
+
+/**
+ * Computes the next non-terminal match status without ever regressing PLAYING -> PLACEMENT/STAKING.
+ */
+function resolveMatchPhaseStatus(params: {
+  currentStatus: MatchStatus;
+  stakeAmountEth: string;
+  hostReady: boolean;
+  guestReady: boolean;
+  hostStaked: boolean;
+  guestStaked: boolean;
+  fallbackStatus: MatchStatus;
+}): { status: MatchStatus; readyToPlay: boolean } {
+  if (params.currentStatus === 'FINISHED' || params.currentStatus === 'CANCELLED') {
+    return { status: params.currentStatus, readyToPlay: false };
+  }
+
+  const readyToPlay =
+    params.hostReady &&
+    params.guestReady &&
+    (isFreeStake(params.stakeAmountEth) || (params.hostStaked && params.guestStaked));
+
+  if (readyToPlay || params.currentStatus === 'PLAYING') {
+    return { status: 'PLAYING', readyToPlay: true };
+  }
+
+  return { status: params.fallbackStatus, readyToPlay: false };
+}
+
 // Query list of open waiting lobbies for multiplayer lobby
 export const listOpenLobbies = query({
   args: {},
@@ -262,12 +304,26 @@ export const joinLobby = mutation({
     }
 
     const now = Date.now();
+    const { status } = resolveMatchPhaseStatus({
+      currentStatus: match.status,
+      stakeAmountEth: match.stakeAmountEth,
+      hostReady: !!match.hostReady,
+      guestReady: !!match.guestReady,
+      hostStaked: !!match.hostStaked,
+      guestStaked: !!match.guestStaked,
+      fallbackStatus: isFreeStake(match.stakeAmountEth)
+        ? 'PLACEMENT'
+        : match.status === 'OPEN'
+          ? 'STAKING'
+          : match.status
+    });
+
     await ctx.db.patch(match._id, {
       guestAddress: args.guestAddress,
       guestName: args.guestName || 'Challenger',
       guestToken: args.guestToken,
       playerCount: 2,
-      status: match.hostStaked ? 'STAKING' : 'STAKING',
+      status,
       lastActionAt: now,
       logs: [
         {
@@ -311,13 +367,23 @@ export const confirmStake = mutation({
     const hostStaked = role === 'host' ? true : !!match.hostStaked;
     const guestStaked = role === 'guest' ? true : !!match.guestStaked;
     const bothStaked = hostStaked && guestStaked;
+    const { status, readyToPlay } = resolveMatchPhaseStatus({
+      currentStatus: match.status,
+      stakeAmountEth: match.stakeAmountEth,
+      hostReady: !!match.hostReady,
+      guestReady: !!match.guestReady,
+      hostStaked,
+      guestStaked,
+      fallbackStatus: bothStaked ? 'PLACEMENT' : match.status === 'OPEN' ? 'OPEN' : 'STAKING'
+    });
 
     await ctx.db.patch(match._id, {
       hostStaked,
       guestStaked,
       hostStakeTxHash: role === 'host' ? args.txHash : match.hostStakeTxHash,
       guestStakeTxHash: role === 'guest' ? args.txHash : match.guestStakeTxHash,
-      status: bothStaked ? 'PLACEMENT' : match.status === 'OPEN' ? 'OPEN' : 'STAKING',
+      status,
+      currentTurn: readyToPlay ? match.currentTurn || 'host' : match.currentTurn,
       lastActionAt: now,
       logs: [
         {
@@ -349,24 +415,40 @@ export const submitCommitment = mutation({
     if (!match) throw new Error('Match not found');
     const role = resolveCallerRole(match, args.playerToken);
     const now = Date.now();
+    const isFree = isFreeStake(match.stakeAmountEth);
 
     const hostReady = role === 'host' ? true : !!match.hostReady;
     const guestReady = role === 'guest' ? true : !!match.guestReady;
-    const bothReady = hostReady && guestReady;
+    const hostStaked = isFree && role === 'host' ? true : !!match.hostStaked;
+    const guestStaked = isFree && role === 'guest' ? true : !!match.guestStaked;
+
+    const { status, readyToPlay } = resolveMatchPhaseStatus({
+      currentStatus: match.status,
+      stakeAmountEth: match.stakeAmountEth,
+      hostReady,
+      guestReady,
+      hostStaked,
+      guestStaked,
+      fallbackStatus: 'PLACEMENT'
+    });
 
     await ctx.db.patch(match._id, {
       hostCommitment: role === 'host' ? args.boardCommitment : match.hostCommitment,
       guestCommitment: role === 'guest' ? args.boardCommitment : match.guestCommitment,
       hostReady,
       guestReady,
-      status: bothReady ? 'PLAYING' : 'PLACEMENT',
-      currentTurn: bothReady ? 'host' : match.currentTurn,
+      hostStaked,
+      guestStaked,
+      hostStakeTxHash: isFree && role === 'host' ? 'free_zk_match' : match.hostStakeTxHash,
+      guestStakeTxHash: isFree && role === 'guest' ? 'free_zk_match' : match.guestStakeTxHash,
+      status,
+      currentTurn: readyToPlay ? match.currentTurn || 'host' : match.currentTurn,
       lastActionAt: now,
       logs: [
         {
           id: `${now}-commit-${role}`,
           sender: role === 'host' ? 'PLAYER' : 'OPPONENT',
-          message: bothReady
+          message: readyToPlay
             ? 'Both fleets committed via ZK Merkle roots! Battle engaged — Host fires first.'
             : `${role === 'host' ? 'Host' : 'Guest'} committed private fleet (${args.boardCommitment.slice(0, 12)}...).`,
           timestamp: formatLogTime(),
